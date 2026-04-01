@@ -19,7 +19,7 @@ function BooksPage() {
   const [typeInput, setTypeInput] = useState("cash");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingName, setEditingName] = useState("");
-  const [incomeAmount, setIncomeAmount] = useState(0);
+  const [editingIncome, setEditingIncome] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -57,7 +57,7 @@ function BooksPage() {
   const startEditing = (account) => {
     setEditingAccountId(account.id);
     setEditingName(account.name);
-    setIncomeAmount(0);
+    setEditingIncome(account.incomeTotal || 0);
     setMessage("");
   };
 
@@ -71,27 +71,43 @@ function BooksPage() {
     try {
       await renameAccount(editingAccountId, editingName);
 
-      // Jika user mengisi pemasukan, buat transaksi income
-      if (incomeAmount > 0) {
-        const account = summary.accounts.find(a => a.id === editingAccountId);
+      // Hitung selisih income baru vs lama
+      const currentAccount = summary.accounts.find(a => a.id === editingAccountId);
+      const currentIncome = currentAccount?.incomeTotal || 0;
+      const delta = editingIncome - currentIncome;
+
+      if (delta > 0) {
+        // Tambah transaksi income untuk selisihnya
         await addTransaction({
           type: "income",
-          amount: incomeAmount,
+          amount: delta,
           category: "pemasukan",
-          description: "Saldo awal / pemasukan manual",
+          description: "Penyesuaian saldo pemasukan",
           date: new Date().toISOString(),
           accountId: editingAccountId,
-          accountLabel: account?.name || editingName,
+          accountLabel: currentAccount?.name || editingName,
+          inputMethod: "manual"
+        });
+      } else if (delta < 0) {
+        // Kurangi: buat transaksi expense untuk selisihnya
+        await addTransaction({
+          type: "expense",
+          amount: Math.abs(delta),
+          category: "lainnya",
+          description: "Penyesuaian saldo pemasukan",
+          date: new Date().toISOString(),
+          accountId: editingAccountId,
+          accountLabel: currentAccount?.name || editingName,
           inputMethod: "manual"
         });
       }
 
       setEditingAccountId("");
       setEditingName("");
-      setIncomeAmount(0);
+      setEditingIncome(0);
       setMessage(
-        incomeAmount > 0
-          ? `Rekening diperbarui & pemasukan ${formatRupiah(incomeAmount)} ditambahkan.`
+        delta !== 0
+          ? `Rekening diperbarui. Saldo disesuaikan ${delta > 0 ? "+" : ""}${formatRupiah(delta)}.`
           : "Nama rekening berhasil diperbarui."
       );
     } catch (error) {
@@ -221,7 +237,7 @@ function BooksPage() {
                   </div>
                   
                   {editingAccountId === account.id ? (
-                    <div className="flex flex-col gap-2">
+                    <div>
                       <input
                         type="text"
                         value={editingName}
@@ -230,20 +246,6 @@ function BooksPage() {
                         placeholder="Nama rekening"
                         autoFocus
                       />
-                      <div className="flex items-center gap-1">
-                        <span className="text-[10px] text-primary font-bold uppercase tracking-wider">+ Pemasukan:</span>
-                        <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
-                          <span className="text-xs font-bold text-primary">Rp</span>
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={formatRupiahInput(incomeAmount)}
-                            onChange={(event) => setIncomeAmount(parseRupiahInput(event.target.value))}
-                            className="bg-transparent border-none text-primary text-sm font-bold w-24 outline-none px-1"
-                            placeholder="0 (opsional)"
-                          />
-                        </div>
-                      </div>
                     </div>
                   ) : (
                     <div>
@@ -261,10 +263,26 @@ function BooksPage() {
                     <span className="font-bold text-on-surface">{formatRupiah(balance)}</span>
                   </div>
                   
-                  <div className="hidden sm:block">
-                    <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
-                    <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
-                  </div>
+                  {editingAccountId === account.id ? (
+                    <div>
+                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                        <span className="text-xs font-bold text-primary">Rp</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatRupiahInput(editingIncome)}
+                          onChange={(event) => setEditingIncome(parseRupiahInput(event.target.value))}
+                          className="bg-transparent border-none text-primary text-sm font-bold w-28 outline-none px-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:block">
+                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                      <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
+                    </div>
+                  )}
                   
                   <div className="hidden sm:block">
                     <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
