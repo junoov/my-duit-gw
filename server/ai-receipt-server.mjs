@@ -157,27 +157,35 @@ function sanitizeAiReceiptResult(rawResult, fallback = {}) {
 
 function buildPrompt({ ocrText, fallback }) {
   return [
-    "Ekstrak data struk belanja Indonesia ke JSON valid.",
-    "Kembalikan HANYA JSON, tanpa markdown/code block.",
-    "Schema wajib:",
-    "{",
-    '  "amount": number,',
-    '  "merchant": string,',
-    '  "lineItems": [{"name": string, "quantity": number, "amount": number}],',
-    '  "suggestedCategoryId": "makanan_minuman|transportasi|kebutuhan_harian|tagihan|hiburan|kesehatan|pendidikan|lainnya",',
-    '  "confidenceHint": string',
-    "}",
-    "Aturan:",
-    "- amount adalah grand total yang dibayar customer.",
-    "- lineItems berisi item belanja (bukan subtotal, tax, diskon, kembalian).",
-    "- quantity default 1 jika tidak ada.",
-    "- suggestedCategoryId pilih 1 nilai valid berdasarkan merchant/item.",
-    "- Jika ragu, gunakan data fallback.",
+    "Kamu adalah mesin ekstraksi struk belanja Indonesia. Tugas kamu:",
+    "1. Baca teks OCR struk berikut ini dengan teliti.",
+    "2. Ekstrak SEMUA item belanja yang ada di struk tanpa terkecuali.",
+    "3. Kembalikan hasilnya dalam format JSON VALID berikut (tanpa markdown, tanpa penjelasan):",
     "",
-    "Fallback parser lokal:",
+    "{",
+    '  "amount": number (grand total yang dibayar, bukan subtotal),',
+    '  "merchant": string (nama toko/restoran),',
+    '  "lineItems": [',
+    '    {"name": string, "quantity": number, "amount": number (harga per item x quantity)}',
+    '  ],',
+    '  "suggestedCategoryId": "makanan_minuman|transportasi|kebutuhan_harian|tagihan|hiburan|kesehatan|pendidikan|lainnya",',
+    '  "confidenceHint": string (seberapa yakin hasilnya)',
+    "}",
+    "",
+    "ATURAN PENTING:",
+    "- lineItems WAJIB berisi SEMUA item yang tercetak di struk, termasuk makanan, minuman, addon, diskon item.",
+    "- JANGAN skip item apapun walau kecil (es teh, nasi tambah, pajak item, dll).",
+    "- Jika ada diskon pada item tertentu, kurangi dari amount item tersebut.",
+    "- quantity default 1 jika tidak tertulis.",
+    "- amount di lineItems = harga satuan x quantity (subtotal item tsb).",
+    "- JANGAN masukkan baris subtotal, tax, service charge, kembalian, atau no. nota ke lineItems.",
+    "- suggestedCategoryId pilih 1 berdasarkan jenis merchant/barang.",
+    "- Jika OCR tidak terbaca jelas, gunakan data fallback sebagai acuan.",
+    "",
+    "Data fallback dari parser lokal (gunakan jika OCR tidak jelas):",
     JSON.stringify(fallback, null, 2),
     "",
-    "OCR text:",
+    "===== TEKS OCR STRUK =====",
     ocrText
   ].join("\n");
 }
@@ -195,12 +203,12 @@ async function parseReceiptWithOpenRouter({ apiKey, model, ocrText, fallback }) 
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: 900,
+      max_tokens: 2000,
       messages: [
         {
           role: "system",
           content:
-            "You are a receipt extraction engine. Return strict JSON only. Never add markdown fences. Never include explanations outside JSON."
+            "You are a receipt OCR extraction engine for Indonesian receipts. Return strict JSON only. Extract ALL line items without exception. Never add markdown fences. Never include explanations outside JSON."
         },
         {
           role: "user",
