@@ -1,4 +1,24 @@
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
+
 function ProfilePage() {
+  const { user, signOutUser, signInWithGoogle, authError } = useAuth();
+  const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
+
+  const resolvedGooglePhoto =
+    user?.photoURL ||
+    user?.providerData?.find((item) => item?.providerId === "google.com")?.photoURL ||
+    "";
+
+  const userName = user?.displayName || user?.email?.split("@")[0] || "Pengguna";
+  const userEmail = user?.email || "-";
+  const userPhoto = resolvedGooglePhoto || "https://i.pravatar.cc/150?u=myduitku";
+  const fallbackUserPhoto = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    userName
+  )}&background=4edea3&color=0b1326&bold=true&size=256`;
+
   return (
     <div className="space-y-6">
       <section className="bg-surface-container-low p-6 rounded-[1.5rem] relative overflow-hidden flex flex-col items-center justify-center">
@@ -9,14 +29,22 @@ function ProfilePage() {
         <div className="relative z-10 text-center space-y-4">
           <div className="w-24 h-24 mx-auto rounded-full p-1 bg-gradient-to-tr from-primary to-secondary">
             <img 
-              src="https://i.pravatar.cc/150?u=myduitku" 
+              src={userPhoto}
               alt="User" 
               className="w-full h-full rounded-full border-4 border-surface-container-low object-cover"
+              referrerPolicy="no-referrer"
+              onError={(event) => {
+                const target = event.currentTarget;
+                if (target.src === fallbackUserPhoto) {
+                  return;
+                }
+                target.src = fallbackUserPhoto;
+              }}
             />
           </div>
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-on-surface">Rizky</h2>
-            <p className="text-sm font-medium text-on-surface-variant">rizky@example.com</p>
+            <h2 className="text-xl font-bold tracking-tight text-on-surface">{userName}</h2>
+            <p className="text-sm font-medium text-on-surface-variant">{userEmail}</p>
           </div>
         </div>
       </section>
@@ -24,20 +52,68 @@ function ProfilePage() {
       <section className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-6">
         <h3 className="text-lg font-bold tracking-tight text-on-surface">Pengaturan Akun</h3>
         <div className="space-y-3 mt-4">
-          <button className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest hover:bg-surface-bright transition-colors text-on-surface font-medium">
-            <span className="flex items-center gap-3">
-              <span className="material-symbols-outlined text-primary">key</span>
-              Ubah Password
-            </span>
-            <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
-          </button>
-          
-          <button className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest hover:bg-tertiary/10 transition-colors text-tertiary font-bold">
-            <span className="flex items-center gap-3">
-              <span className="material-symbols-outlined">logout</span>
-              Keluar dari Aplikasi
-            </span>
-          </button>
+          {user ? (
+            <button className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest text-on-surface-variant font-medium cursor-not-allowed" disabled>
+              <span className="flex items-center gap-3">
+                <span className="material-symbols-outlined text-primary">key</span>
+                Login via Google
+              </span>
+              <span className="material-symbols-outlined text-on-surface-variant">chevron_right</span>
+            </button>
+          ) : (
+            <button
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-primary text-on-primary font-bold"
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await signInWithGoogle();
+                } catch (error) {
+                  showToast({
+                    message: error instanceof Error ? error.message : "Login Google gagal. Coba lagi.",
+                    type: "error"
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+              disabled={loading}
+            >
+              <span className="flex items-center gap-3">
+                <span className="material-symbols-outlined">login</span>
+                {loading ? "Memproses..." : "Masuk dengan Google"}
+              </span>
+            </button>
+          )}
+
+          {user ? (
+            <button
+              className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest hover:bg-tertiary/10 transition-colors text-tertiary font-bold disabled:opacity-50"
+              disabled={loading}
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  await signOutUser();
+                } catch (error) {
+                  showToast({
+                    message:
+                      error instanceof Error ? error.message : "Gagal logout. Coba lagi.",
+                    type: "error"
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              <span className="flex items-center gap-3">
+                <span className="material-symbols-outlined">logout</span>
+                {loading ? "Memproses..." : "Keluar dari Aplikasi"}
+              </span>
+            </button>
+          ) : null}
+
+          {!user && authError ? (
+            <p className="text-sm bg-tertiary/10 text-tertiary rounded-xl p-3">{authError}</p>
+          ) : null}
         </div>
       </section>
       

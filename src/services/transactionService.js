@@ -1,8 +1,31 @@
-import { db } from "../db/database";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  orderBy
+} from "firebase/firestore";
 import { getAccountById } from "./accountService";
+import { auth, db, assertFirebaseReady } from "./firebaseClient";
 
 const validTypes = new Set(["expense", "income"]);
 const validInputMethods = new Set(["manual", "scan"]);
+
+function getActiveUserId() {
+  assertFirebaseReady();
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    throw new Error("Silakan login Google dulu untuk mengakses transaksi.");
+  }
+  return userId;
+}
+
+function getTransactionsCollection(userId) {
+  return collection(db, "users", userId, "transactions");
+}
 
 function createTransactionId() {
   const cryptoApi = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
@@ -81,6 +104,8 @@ export async function addTransaction(payload) {
     throw new Error("Tanggal transaksi tidak valid.");
   }
 
+  const userId = getActiveUserId();
+
   const normalizedDescription =
     typeof payload.description === "string" && payload.description.trim().length > 0
       ? payload.description.trim()
@@ -102,15 +127,20 @@ export async function addTransaction(payload) {
         : selectedAccount.name,
     ...(normalizedLineItems.length > 0 ? { lineItems: normalizedLineItems } : {}),
     receiptImageRef: payload.receiptImageRef || null,
+    userId,
     createdAt: new Date().toISOString()
   };
 
-  await db.transactions.add(transaction);
+  const transactionRef = doc(getTransactionsCollection(userId), transaction.id);
+  await setDoc(transactionRef, transaction);
   return transaction;
 }
 
 export async function getAllTransactionsDesc() {
-  return db.transactions.orderBy("date").reverse().toArray();
+  const userId = getActiveUserId();
+  const transactionsQuery = query(getTransactionsCollection(userId), orderBy("date", "desc"));
+  const snapshot = await getDocs(transactionsQuery);
+  return snapshot.docs.map((item) => item.data());
 }
 
 export async function deleteTransaction(transactionId) {
@@ -118,12 +148,15 @@ export async function deleteTransaction(transactionId) {
     throw new Error("ID transaksi tidak valid.");
   }
 
-  const existing = await db.transactions.get(transactionId);
+  const userId = getActiveUserId();
+  const transactionRef = doc(db, "users", userId, "transactions", transactionId);
+  const existingSnapshot = await getDoc(transactionRef);
+  const existing = existingSnapshot.exists() ? existingSnapshot.data() : null;
   if (!existing) {
     throw new Error("Transaksi tidak ditemukan.");
   }
 
-  await db.transactions.delete(transactionId);
+  await deleteDoc(transactionRef);
   return existing;
 }
 
@@ -132,9 +165,6 @@ export async function getTransactionsByAccountId(accountId) {
     return [];
   }
 
-  return db.transactions
-    .where("accountId")
-    .equals(accountId.trim())
-    .reverse()
-    .sortBy("date");
+  const transactions = await getAllTransactionsDesc();
+  return transactions.filter((item) => item.accountId === accountId.trim());
 }

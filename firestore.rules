@@ -1,0 +1,130 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidAccount(userId) {
+      return request.resource.data.keys().hasOnly([
+          'id',
+          'name',
+          'type',
+          'sortOrder',
+          'initialBalance',
+          'incomeAdjustment',
+          'userId',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.userId == userId
+        && request.resource.data.id is string
+        && request.resource.data.id.size() >= 2
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 2
+        && request.resource.data.type in ['cash', 'bank', 'ewallet', 'other']
+        && request.resource.data.sortOrder is int
+        && request.resource.data.sortOrder > 0
+        && request.resource.data.initialBalance is int
+        && request.resource.data.incomeAdjustment is int
+        && request.resource.data.createdAt is string
+        && request.resource.data.updatedAt is string;
+    }
+
+    function isValidTransaction(userId) {
+      return request.resource.data.keys().hasAll([
+          'id',
+          'type',
+          'amount',
+          'category',
+          'description',
+          'date',
+          'inputMethod',
+          'accountId',
+          'accountLabel',
+          'userId',
+          'createdAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'type',
+          'amount',
+          'category',
+          'description',
+          'date',
+          'inputMethod',
+          'accountId',
+          'accountLabel',
+          'lineItems',
+          'receiptImageRef',
+          'userId',
+          'createdAt'
+        ])
+        && request.resource.data.userId == userId
+        && request.resource.data.id is string
+        && request.resource.data.type in ['expense', 'income']
+        && request.resource.data.amount is int
+        && request.resource.data.amount > 0
+        && request.resource.data.category is string
+        && request.resource.data.category.size() >= 2
+        && request.resource.data.description is string
+        && request.resource.data.accountId is string
+        && request.resource.data.accountId.size() >= 2
+        && request.resource.data.accountLabel is string
+        && request.resource.data.inputMethod in ['manual', 'scan']
+        && request.resource.data.date is string
+        && request.resource.data.createdAt is string
+        && (!('lineItems' in request.resource.data) || request.resource.data.lineItems is list)
+        && (!('receiptImageRef' in request.resource.data) || request.resource.data.receiptImageRef == null || request.resource.data.receiptImageRef is string);
+    }
+
+    function isValidCategory(userId) {
+      return request.resource.data.keys().hasOnly(['id', 'label', 'icon', 'userId', 'createdAt'])
+        && request.resource.data.userId == userId
+        && request.resource.data.id is string
+        && request.resource.data.id.size() >= 2
+        && request.resource.data.label is string
+        && request.resource.data.label.size() >= 2
+        && request.resource.data.icon is string
+        && request.resource.data.createdAt is string;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if false;
+
+      match /accounts/{accountId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidAccount(userId);
+        allow update: if isOwner(userId)
+          && isValidAccount(userId)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId);
+      }
+
+      match /transactions/{transactionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidTransaction(userId);
+        allow update: if isOwner(userId)
+          && isValidTransaction(userId)
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId);
+      }
+
+      match /categories/{categoryId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidCategory(userId);
+        allow update: if false;
+        allow delete: if isOwner(userId);
+      }
+    }
+  }
+}

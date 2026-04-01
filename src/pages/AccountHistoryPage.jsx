@@ -1,36 +1,26 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useLiveQuery } from "dexie-react-hooks";
 import TransactionList from "../components/TransactionList";
-import { getAccountById } from "../services/accountService";
-import { getTransactionsByAccountId } from "../services/transactionService";
+import { useAccounts } from "../hooks/useAccounts";
+import { useTransactions } from "../hooks/useTransactions";
 import { formatRupiah } from "../utils/currency";
 
 function AccountHistoryPage() {
   const { accountId } = useParams();
   const navigate = useNavigate();
-  const [account, setAccount] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const { accounts, loading: accountsLoading } = useAccounts();
+  const { transactions, loading: transactionsLoading } = useTransactions();
 
-  const transactions = useLiveQuery(
-    () => getTransactionsByAccountId(accountId),
-    [accountId],
-    []
+  const account = useMemo(
+    () => accounts.find((item) => item.id === accountId) || null,
+    [accounts, accountId]
   );
 
-  useEffect(() => {
-    async function loadAccount() {
-      try {
-        const data = await getAccountById(accountId);
-        setAccount(data);
-      } catch (error) {
-        console.error("Gagal memuat detail rekening", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadAccount();
-  }, [accountId]);
+  const accountTransactions = useMemo(() => {
+    return transactions.filter((item) => item.accountId === accountId);
+  }, [transactions, accountId]);
+
+  const loading = accountsLoading || transactionsLoading;
 
   const accountMap = useMemo(() => {
     if (!account) return new Map();
@@ -38,8 +28,8 @@ function AccountHistoryPage() {
   }, [account]);
 
   const summary = useMemo(() => {
-    if (!transactions) return { income: 0, expense: 0, balance: 0 };
-    return transactions.reduce(
+    if (!accountTransactions) return { income: 0, expense: 0, balance: 0 };
+    return accountTransactions.reduce(
       (acc, tx) => {
         if (tx.type === "income") {
           acc.income += tx.amount;
@@ -51,7 +41,7 @@ function AccountHistoryPage() {
       },
       { income: 0, expense: 0, balance: 0 }
     );
-  }, [transactions]);
+  }, [accountTransactions]);
 
   if (loading) {
     return <p className="text-center text-sm font-medium text-on-surface-variant p-8">Memuat data rekening...</p>;
@@ -115,7 +105,7 @@ function AccountHistoryPage() {
       <section className="space-y-4">
         <h3 className="text-lg font-bold tracking-tight text-on-surface">Riwayat Transaksi</h3>
         <TransactionList 
-          transactions={transactions} 
+          transactions={accountTransactions} 
           accountMap={accountMap} 
         />
       </section>

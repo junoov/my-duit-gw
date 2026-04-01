@@ -5,6 +5,43 @@ import { VitePWA } from "vite-plugin-pwa";
 const apiProxyTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8787";
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) {
+            return undefined;
+          }
+
+          if (id.includes("firebase")) {
+            if (id.includes("firebase/firestore")) {
+              return "vendor-firebase-firestore";
+            }
+
+            if (id.includes("firebase/auth")) {
+              return "vendor-firebase-auth";
+            }
+
+            return "vendor-firebase-core";
+          }
+
+          if (id.includes("recharts") || id.includes("d3-")) {
+            return "vendor-charts";
+          }
+
+          if (id.includes("tesseract.js")) {
+            return "vendor-ocr";
+          }
+
+          if (id.includes("react") || id.includes("scheduler") || id.includes("react-router")) {
+            return "vendor-react";
+          }
+
+          return undefined;
+        }
+      }
+    }
+  },
   server: {
     proxy: {
       "/api": {

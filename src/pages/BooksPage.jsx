@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useToast } from "../context/ToastContext";
 import { useAccounts } from "../hooks/useAccounts";
 import { addAccount, removeAccount, renameAccount, updateIncomeAdjustment } from "../services/accountService";
 import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
@@ -20,7 +21,7 @@ function BooksPage() {
   const [editingName, setEditingName] = useState("");
   const [editingIncome, setEditingIncome] = useState(0);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState("");
+  const { showToast } = useToast();
 
   const totals = summary.totals;
   const netBalance = totals.income - totals.expense;
@@ -36,7 +37,6 @@ function BooksPage() {
   const createAccount = async (event) => {
     event.preventDefault();
     setSubmitting(true);
-    setMessage("");
 
     try {
       await addAccount({
@@ -45,9 +45,12 @@ function BooksPage() {
       });
       setNameInput("");
       setTypeInput("cash");
-      setMessage("Rekening baru berhasil ditambahkan.");
+      showToast({ message: "Rekening baru berhasil ditambahkan." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal menambah rekening.");
+      showToast({
+        message: error instanceof Error ? error.message : "Gagal menambah rekening.",
+        type: "error"
+      });
     } finally {
       setSubmitting(false);
     }
@@ -57,7 +60,6 @@ function BooksPage() {
     setEditingAccountId(account.id);
     setEditingName(account.name);
     setEditingIncome(account.incomeTotal || 0);
-    setMessage("");
   };
 
   const saveRename = async () => {
@@ -66,7 +68,6 @@ function BooksPage() {
     }
 
     setSubmitting(true);
-    setMessage("");
     try {
       await renameAccount(editingAccountId, editingName);
 
@@ -81,9 +82,12 @@ function BooksPage() {
       setEditingAccountId("");
       setEditingName("");
       setEditingIncome(0);
-      setMessage("Rekening berhasil diperbarui.");
+      showToast({ message: "Rekening berhasil diperbarui." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal mengubah rekening.");
+      showToast({
+        message: error instanceof Error ? error.message : "Gagal mengubah rekening.",
+        type: "error"
+      });
     } finally {
       setSubmitting(false);
     }
@@ -91,12 +95,14 @@ function BooksPage() {
 
   const handleDelete = async (accountId) => {
     setSubmitting(true);
-    setMessage("");
     try {
       await removeAccount(accountId);
-      setMessage("Rekening berhasil dihapus.");
+      showToast({ message: "Rekening berhasil dihapus." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal menghapus rekening.");
+      showToast({
+        message: error instanceof Error ? error.message : "Gagal menghapus rekening.",
+        type: "error"
+      });
     } finally {
       setSubmitting(false);
     }
@@ -181,7 +187,6 @@ function BooksPage() {
             {submitting ? "Menyimpan..." : "Tambah Rekening"}
           </button>
         </form>
-        {message ? <p className="text-sm text-primary text-center mt-2">{message}</p> : null}
       </section>
 
       {/* List Section: Daftar Buku / Rekening */}

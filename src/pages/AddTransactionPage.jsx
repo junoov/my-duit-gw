@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CategoryPicker from "../components/CategoryPicker";
+import { useToast } from "../context/ToastContext";
 import { useAccounts } from "../hooks/useAccounts";
 import { defaultCategoryId } from "../data/categories";
 import { enhanceReceiptWithAI, isAiReceiptEnabled } from "../services/aiReceiptService";
@@ -49,7 +50,7 @@ function AddTransactionPage() {
   const [manualAccountId, setManualAccountId] = useState("");
   const [date, setDate] = useState(defaultDateTime);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
+  const { showToast } = useToast();
 
   const [scanImagePreview, setScanImagePreview] = useState("");
   const [scanProgress, setScanProgress] = useState(0);
@@ -192,10 +193,14 @@ function AddTransactionPage() {
       }
 
       if (autoSavedCount > 0) {
-        setMessage(`${autoSavedCount} transaksi otomatis tersimpan! Yang terakhir diterapkan ke form, cek lalu simpan.`);
+        showToast({
+          message: `${autoSavedCount} transaksi otomatis tersimpan! Yang terakhir diterapkan ke form, cek lalu simpan.`
+        });
         setVoiceStatus(`${autoSavedCount + 1} transaksi terdeteksi dari voice.`);
       } else {
-        setMessage("Draft voice sudah diterapkan (belum tersimpan). Cek lalu tekan Simpan Transaksi.");
+        showToast({
+          message: "Draft voice sudah diterapkan (belum tersimpan). Cek lalu tekan Simpan Transaksi."
+        });
         setVoiceStatus("Input voice berhasil diterapkan ke form manual.");
       }
     };
@@ -304,9 +309,7 @@ function AddTransactionPage() {
     };
   }, []);
 
-  const clearNotification = () => {
-    setMessage("");
-  };
+  const clearNotification = () => {};
 
   const ensureMicrophonePermission = async () => {
     if (typeof window === "undefined") {
@@ -423,10 +426,14 @@ function AddTransactionPage() {
       setAmount(0);
       setDescription("");
       setDate(toDateTimeInputValue(new Date()));
-      setMessage(type === "income" ? "Pemasukan berhasil disimpan." : "Pengeluaran berhasil disimpan.");
-      setTimeout(() => setMessage(""), 3000);
+      showToast({
+        message: type === "income" ? "Pemasukan berhasil disimpan." : "Pengeluaran berhasil disimpan."
+      });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal menyimpan transaksi manual.");
+      showToast({
+        message: error instanceof Error ? error.message : "Gagal menyimpan transaksi manual.",
+        type: "error"
+      });
     } finally {
       setSaving(false);
     }
@@ -495,7 +502,10 @@ function AddTransactionPage() {
     } catch (error) {
       setScanStatus("Scan gagal. Coba foto yang lebih tajam.");
       setScanConfidence("");
-      setMessage(error instanceof Error ? error.message : "Terjadi error saat OCR.");
+      showToast({
+        message: error instanceof Error ? error.message : "Terjadi error saat OCR.",
+        type: "error"
+      });
     } finally {
       setScanning(false);
       event.target.value = "";
@@ -568,10 +578,12 @@ function AddTransactionPage() {
       setScanConfidence("");
       setScanImagePreview("");
       setDate(toDateTimeInputValue(new Date()));
-      setMessage("Pengeluaran dari scan berhasil disimpan ke buku rekening.");
-      setTimeout(() => setMessage(""), 3000);
+      showToast({ message: "Pengeluaran dari scan berhasil disimpan ke buku rekening." });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal menyimpan hasil scan.");
+      showToast({
+        message: error instanceof Error ? error.message : "Gagal menyimpan hasil scan.",
+        type: "error"
+      });
     } finally {
       setSaving(false);
     }
@@ -898,13 +910,6 @@ function AddTransactionPage() {
             {saving ? "Menyimpan..." : "Konfirmasi & Simpan"}
           </button>
         </form>
-      )}
-
-      {message && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-surface-container-high border border-outline-variant/30 rounded-2xl p-4 shadow-xl flex items-start gap-3 z-[100] animate-bounce">
-          <span className="material-symbols-outlined text-primary mt-0.5">check_circle</span>
-          <p className="text-sm font-medium text-on-surface flex-1">{message}</p>
-        </div>
       )}
     </div>
   );

@@ -1,6 +1,37 @@
-import { db } from "../db/database";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where
+} from "firebase/firestore";
+import { getDefaultAccountsWithMeta } from "../data/accounts";
+import { auth, db, assertFirebaseReady } from "./firebaseClient";
 
 const fallbackAccountLabel = "Tanpa rekening";
+
+function getActiveUserId() {
+  assertFirebaseReady();
+  const userId = auth.currentUser?.uid;
+  if (!userId) {
+    throw new Error("Silakan login Google dulu untuk mengakses data akun.");
+  }
+  return userId;
+}
+
+function getAccountsCollection(userId) {
+  return collection(db, "users", userId, "accounts");
+}
+
+function getTransactionsCollection(userId) {
+  return collection(db, "users", userId, "transactions");
+}
 
 function createAccountId(name) {
   const compactName = name
@@ -14,7 +45,28 @@ function createAccountId(name) {
 }
 
 export async function getAllAccounts() {
-  return db.accounts.orderBy("sortOrder").toArray();
+  const userId = getActiveUserId();
+  const accountsCol = getAccountsCollection(userId);
+  const accountsQuery = query(accountsCol, orderBy("sortOrder", "asc"));
+  const snapshot = await getDocs(accountsQuery);
+
+  if (!snapshot.empty) {
+    return snapshot.docs.map((item) => item.data());
+  }
+
+  const timestamp = new Date().toISOString();
+  const defaultAccounts = getDefaultAccountsWithMeta(timestamp).map((account) => ({
+    ...account,
+    initialBalance: account.initialBalance || 0,
+    incomeAdjustment: account.incomeAdjustment || 0,
+    userId
+  }));
+
+  await Promise.all(
+    defaultAccounts.map((account) => setDoc(doc(accountsCol, account.id), account))
+  );
+
+  return defaultAccounts;
 }
 
 export async function getAccountById(accountId) {
@@ -22,7 +74,14 @@ export async function getAccountById(accountId) {
     return null;
   }
 
-  return db.accounts.get(accountId.trim());
+  const userId = getActiveUserId();
+  const accountRef = doc(db, "users", userId, "accounts", accountId.trim());
+  const snapshot = await getDoc(accountRef);
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return snapshot.data();
 }
 
 export async function addAccount(payload) {
@@ -41,14 +100,14 @@ export async function addAccount(payload) {
     throw new Error("Tipe rekening tidak valid.");
   }
 
-  const existing = await db.accounts
-    .filter((account) => account.name.toLowerCase() === name.toLowerCase())
-    .first();
+  const userId = getActiveUserId();
+  const accounts = await getAllAccounts();
+  const existing = accounts.find((account) => account.name.toLowerCase() === name.toLowerCase());
   if (existing) {
     throw new Error("Nama rekening sudah dipakai.");
   }
 
-  const currentCount = await db.accounts.count();
+  const currentCount = accounts.length;
   const timestamp = new Date().toISOString();
 
   const account = {
@@ -56,12 +115,15 @@ export async function addAccount(payload) {
     name,
     type,
     initialBalance: 0,
+    incomeAdjustment: 0,
     sortOrder: currentCount + 1,
+    userId,
     createdAt: timestamp,
     updatedAt: timestamp
   };
 
-  await db.accounts.add(account);
+  const accountRef = doc(db, "users", userId, "accounts", account.id);
+  await setDoc(accountRef, account);
   return account;
 }
 
@@ -70,17 +132,25 @@ export async function removeAccount(accountId) {
     throw new Error("ID rekening tidak valid.");
   }
 
-  const targetAccount = await db.accounts.get(accountId);
+  const userId = getActiveUserId();
+  const accountRef = doc(db, "users", userId, "accounts", accountId);
+  const targetSnapshot = await getDoc(accountRef);
+  const targetAccount = targetSnapshot.exists() ? targetSnapshot.data() : null;
   if (!targetAccount) {
     throw new Error("Rekening tidak ditemukan.");
   }
 
-  const usageCount = await db.transactions.where("accountId").equals(accountId).count();
-  if (usageCount > 0) {
+  const usageQuery = query(
+    getTransactionsCollection(userId),
+    where("accountId", "==", accountId),
+    limit(1)
+  );
+  const usageSnapshot = await getDocs(usageQuery);
+  if (!usageSnapshot.empty) {
     throw new Error("Rekening sudah dipakai transaksi, tidak bisa dihapus.");
   }
 
-  await db.accounts.delete(accountId);
+  await deleteDoc(accountRef);
 }
 
 export async function renameAccount(accountId, name) {
@@ -93,19 +163,23 @@ export async function renameAccount(accountId, name) {
     throw new Error("Nama rekening minimal 2 karakter.");
   }
 
-  const current = await db.accounts.get(accountId);
+  const userId = getActiveUserId();
+  const accountRef = doc(db, "users", userId, "accounts", accountId);
+  const currentSnapshot = await getDoc(accountRef);
+  const current = currentSnapshot.exists() ? currentSnapshot.data() : null;
   if (!current) {
     throw new Error("Rekening tidak ditemukan.");
   }
 
-  const duplicate = await db.accounts
-    .filter((account) => account.id !== accountId && account.name.toLowerCase() === normalizedName.toLowerCase())
-    .first();
+  const accounts = await getAllAccounts();
+  const duplicate = accounts.find(
+    (account) => account.id !== accountId && account.name.toLowerCase() === normalizedName.toLowerCase()
+  );
   if (duplicate) {
     throw new Error("Nama rekening sudah dipakai.");
   }
 
-  await db.accounts.update(accountId, {
+  await updateDoc(accountRef, {
     name: normalizedName,
     updatedAt: new Date().toISOString()
   });
@@ -116,14 +190,17 @@ export async function updateIncomeAdjustment(accountId, desiredIncome, currentTr
     throw new Error("ID rekening tidak valid.");
   }
 
-  const current = await db.accounts.get(accountId);
+  const userId = getActiveUserId();
+  const accountRef = doc(db, "users", userId, "accounts", accountId);
+  const currentSnapshot = await getDoc(accountRef);
+  const current = currentSnapshot.exists() ? currentSnapshot.data() : null;
   if (!current) {
     throw new Error("Rekening tidak ditemukan.");
   }
 
   const adjustment = Math.round(Number(desiredIncome) - Number(currentTransactionIncome));
 
-  await db.accounts.update(accountId, {
+  await updateDoc(accountRef, {
     incomeAdjustment: adjustment,
     updatedAt: new Date().toISOString()
   });
@@ -142,7 +219,13 @@ export function resolveTransactionAccountLabel(transaction, accountMap = new Map
 }
 
 export async function getAccountExpenseSummary() {
-  const [accounts, transactions] = await Promise.all([getAllAccounts(), db.transactions.toArray()]);
+  const userId = getActiveUserId();
+  const [accounts, transactionSnapshot] = await Promise.all([
+    getAllAccounts(),
+    getDocs(getTransactionsCollection(userId))
+  ]);
+
+  const transactions = transactionSnapshot.docs.map((item) => item.data());
 
   const summaryMap = new Map(
     accounts.map((account) => [

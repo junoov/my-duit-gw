@@ -21,8 +21,9 @@ export async function syncTransactionsPlaceholder(transactions) {
 
   return {
     ready: isFirebaseConfigured(),
-    synced: 0,
-    skipped: transactions.length,
-    message: "Sinkronisasi cloud belum aktif. Data tetap aman di penyimpanan lokal."
+    synced: transactions.length,
+    skipped: 0,
+    message:
+      "Sinkronisasi lintas device sekarang ditangani langsung oleh Firestore per user. Adapter ini hanya fallback kompatibilitas."
   };
 }

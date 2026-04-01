@@ -1,6 +1,7 @@
-import { useLiveQuery } from "dexie-react-hooks";
-import { getAllTransactionsDesc } from "../services/transactionService";
-import { getAllAccounts } from "../services/accountService";
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { db } from "../services/firebaseClient";
+import { useAuth } from "../context/AuthContext";
 import { toLocalDateKey } from "../utils/date";
 
 function computeSummary(transactions, accounts) {
@@ -77,14 +78,63 @@ function computeWeeklyExpense(transactions) {
 }
 
 export function useTransactions() {
-  const transactions = useLiveQuery(() => getAllTransactionsDesc(), [], []);
-  const accounts = useLiveQuery(() => getAllAccounts(), [], []);
-  const safeTransactions = transactions || [];
-  const safeAccounts = accounts || [];
+  const { user } = useAuth();
+  const [transactions, setTransactions] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user || !db) {
+      setTransactions([]);
+      setAccounts([]);
+      setLoading(false);
+      return undefined;
+    }
+
+    setLoading(true);
+
+    const transactionsQuery = query(
+      collection(db, "users", user.uid, "transactions"),
+      orderBy("date", "desc")
+    );
+    const accountsQuery = query(
+      collection(db, "users", user.uid, "accounts"),
+      orderBy("sortOrder", "asc")
+    );
+
+    let transactionReady = false;
+    let accountReady = false;
+    const markReady = () => {
+      if (transactionReady && accountReady) {
+        setLoading(false);
+      }
+    };
+
+    const unsubscribeTransactions = onSnapshot(transactionsQuery, (snapshot) => {
+      setTransactions(snapshot.docs.map((item) => item.data()));
+      transactionReady = true;
+      markReady();
+    });
+
+    const unsubscribeAccounts = onSnapshot(accountsQuery, (snapshot) => {
+      setAccounts(snapshot.docs.map((item) => item.data()));
+      accountReady = true;
+      markReady();
+    });
+
+    return () => {
+      unsubscribeTransactions();
+      unsubscribeAccounts();
+    };
+  }, [user]);
+
+  const safeTransactions = useMemo(() => transactions || [], [transactions]);
+  const safeAccounts = useMemo(() => accounts || [], [accounts]);
 
   return {
     transactions: safeTransactions,
     summary: computeSummary(safeTransactions, safeAccounts),
-    weeklyExpense: computeWeeklyExpense(safeTransactions)
+    weeklyExpense: computeWeeklyExpense(safeTransactions),
+    loading
   };
 }
