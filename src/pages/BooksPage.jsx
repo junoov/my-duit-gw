@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccounts } from "../hooks/useAccounts";
-import { addAccount, removeAccount, renameAccount } from "../services/accountService";
-import { addTransaction } from "../services/transactionService";
+import { addAccount, removeAccount, renameAccount, updateIncomeAdjustment } from "../services/accountService";
 import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
 
 const accountTypeOptions = [
@@ -71,45 +70,18 @@ function BooksPage() {
     try {
       await renameAccount(editingAccountId, editingName);
 
-      // Hitung selisih income baru vs lama
+      // Simpan selisih income langsung di data rekening (tanpa buat history)
       const currentAccount = summary.accounts.find(a => a.id === editingAccountId);
-      const currentIncome = currentAccount?.incomeTotal || 0;
-      const delta = editingIncome - currentIncome;
+      const currentTransactionIncome = (currentAccount?.incomeTotal || 0) - (currentAccount?.incomeAdjustment || 0);
 
-      if (delta > 0) {
-        // Tambah transaksi income untuk selisihnya
-        await addTransaction({
-          type: "income",
-          amount: delta,
-          category: "pemasukan",
-          description: "Penyesuaian saldo pemasukan",
-          date: new Date().toISOString(),
-          accountId: editingAccountId,
-          accountLabel: currentAccount?.name || editingName,
-          inputMethod: "manual"
-        });
-      } else if (delta < 0) {
-        // Kurangi: buat transaksi expense untuk selisihnya
-        await addTransaction({
-          type: "expense",
-          amount: Math.abs(delta),
-          category: "lainnya",
-          description: "Penyesuaian saldo pemasukan",
-          date: new Date().toISOString(),
-          accountId: editingAccountId,
-          accountLabel: currentAccount?.name || editingName,
-          inputMethod: "manual"
-        });
+      if (editingIncome !== (currentAccount?.incomeTotal || 0)) {
+        await updateIncomeAdjustment(editingAccountId, editingIncome, currentTransactionIncome);
       }
 
       setEditingAccountId("");
       setEditingName("");
       setEditingIncome(0);
-      setMessage(
-        delta !== 0
-          ? `Rekening diperbarui. Saldo disesuaikan ${delta > 0 ? "+" : ""}${formatRupiah(delta)}.`
-          : "Nama rekening berhasil diperbarui."
-      );
+      setMessage("Rekening berhasil diperbarui.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Gagal mengubah rekening.");
     } finally {

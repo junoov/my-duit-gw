@@ -1,8 +1,9 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { getAllTransactionsDesc } from "../services/transactionService";
+import { getAllAccounts } from "../services/accountService";
 import { toLocalDateKey } from "../utils/date";
 
-function computeSummary(transactions) {
+function computeSummary(transactions, accounts) {
   const today = toLocalDateKey(new Date());
 
   let income = 0;
@@ -28,10 +29,16 @@ function computeSummary(transactions) {
     byCategory[tx.category] += tx.type === "expense" ? tx.amount : 0;
   });
 
+  // Tambahkan incomeAdjustment dari semua akun
+  const totalAdjustment = (accounts || []).reduce(
+    (sum, acc) => sum + (acc.incomeAdjustment || 0),
+    0
+  );
+
   return {
-    income,
+    income: income + totalAdjustment,
     expense,
-    balance: income - expense,
+    balance: income + totalAdjustment - expense,
     todayExpense,
     byCategory
   };
@@ -71,11 +78,13 @@ function computeWeeklyExpense(transactions) {
 
 export function useTransactions() {
   const transactions = useLiveQuery(() => getAllTransactionsDesc(), [], []);
+  const accounts = useLiveQuery(() => getAllAccounts(), [], []);
   const safeTransactions = transactions || [];
+  const safeAccounts = accounts || [];
 
   return {
     transactions: safeTransactions,
-    summary: computeSummary(safeTransactions),
+    summary: computeSummary(safeTransactions, safeAccounts),
     weeklyExpense: computeWeeklyExpense(safeTransactions)
   };
 }

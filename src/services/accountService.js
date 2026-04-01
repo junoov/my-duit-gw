@@ -111,14 +111,9 @@ export async function renameAccount(accountId, name) {
   });
 }
 
-export async function updateAccountBalance(accountId, newBalance) {
+export async function updateIncomeAdjustment(accountId, desiredIncome, currentTransactionIncome) {
   if (typeof accountId !== "string" || accountId.trim().length === 0) {
     throw new Error("ID rekening tidak valid.");
-  }
-
-  const normalizedBalance = Number(newBalance);
-  if (!Number.isFinite(normalizedBalance) || normalizedBalance < 0) {
-    throw new Error("Saldo harus angka positif atau nol.");
   }
 
   const current = await db.accounts.get(accountId);
@@ -126,8 +121,10 @@ export async function updateAccountBalance(accountId, newBalance) {
     throw new Error("Rekening tidak ditemukan.");
   }
 
+  const adjustment = Math.round(Number(desiredIncome) - Number(currentTransactionIncome));
+
   await db.accounts.update(accountId, {
-    initialBalance: Math.round(normalizedBalance),
+    incomeAdjustment: adjustment,
     updatedAt: new Date().toISOString()
   });
 }
@@ -152,9 +149,9 @@ export async function getAccountExpenseSummary() {
       account.id,
       {
         ...account,
-        initialBalance: account.initialBalance || 0,
+        incomeAdjustment: account.incomeAdjustment || 0,
         expenseTotal: 0,
-        incomeTotal: 0,
+        incomeTotal: account.incomeAdjustment || 0,
         transactionCount: 0
       }
     ])
@@ -192,7 +189,6 @@ export async function getAccountExpenseSummary() {
     totals: {
       expense: accountValues.reduce((sum, item) => sum + item.expenseTotal, 0),
       income: accountValues.reduce((sum, item) => sum + item.incomeTotal, 0),
-      initialBalance: accountValues.reduce((sum, item) => sum + (item.initialBalance || 0), 0),
       uncategorizedExpense: uncategorizedExpenseTotal,
       uncategorizedIncome: uncategorizedIncomeTotal,
       accountCount: accounts.length
