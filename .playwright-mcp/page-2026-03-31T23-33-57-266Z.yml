@@ -1,0 +1,31 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e6] [cursor=pointer]:
+      - button "arrow_back_ios_new" [ref=e7]:
+        - generic [ref=e8]: arrow_back_ios_new
+      - heading "Tambah Transaksi" [level=1] [ref=e9]
+  - main [ref=e10]:
+    - generic [ref=e12]:
+      - heading "Belum Ada Rekening" [level=3] [ref=e13]
+      - paragraph [ref=e14]: Tambahkan minimal satu rekening dulu di menu Buku agar pemasukan/pengeluaran bisa dipilih sumber dananya.
+      - button "Buka Buku Rekening" [ref=e15] [cursor=pointer]
+  - navigation [ref=e16]:
+    - link "grid_view Dashboard" [ref=e17] [cursor=pointer]:
+      - /url: /
+      - generic [ref=e18]: grid_view
+      - generic [ref=e19]: Dashboard
+    - link "account_balance_wallet Buku" [ref=e20] [cursor=pointer]:
+      - /url: /buku
+      - generic [ref=e21]: account_balance_wallet
+      - generic [ref=e22]: Buku
+    - link "Tambah Transaksi" [ref=e23] [cursor=pointer]:
+      - /url: /tambah
+      - generic [ref=e24]: add
+    - link "query_stats Insights" [ref=e25] [cursor=pointer]:
+      - /url: /laporan
+      - generic [ref=e26]: query_stats
+      - generic [ref=e27]: Insights
+    - link "settings Settings" [ref=e28] [cursor=pointer]:
+      - /url: /profil
+      - generic [ref=e29]: settings
+      - generic [ref=e30]: Settings

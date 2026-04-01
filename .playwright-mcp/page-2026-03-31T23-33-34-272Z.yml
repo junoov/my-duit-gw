@@ -1,0 +1,63 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e6] [cursor=pointer]:
+        - button "arrow_back_ios_new" [ref=e7]:
+          - generic [ref=e8]: arrow_back_ios_new
+        - heading "Laporan Keuangan" [level=1] [ref=e9]
+    - main [ref=e10]:
+      - generic [ref=e11]:
+        - generic [ref=e12]:
+          - generic [ref=e14]: Saldo Tersedia
+          - generic [ref=e16]:
+            - generic [ref=e17]:
+              - generic [ref=e18]: Rp
+              - generic [ref=e19]: "0"
+            - generic [ref=e20]:
+              - generic [ref=e21]:
+                - generic [ref=e22]: Pemasukan
+                - text: Rp 0
+              - generic [ref=e23]:
+                - generic [ref=e24]: Pengeluaran
+                - text: Rp 0
+        - generic [ref=e25]:
+          - heading "Tren Pengeluaran 7 Hari" [level=3] [ref=e26]
+          - img [ref=e30]:
+            - generic [ref=e34]:
+              - generic [ref=e36]: Kam
+              - generic [ref=e38]: Jum
+              - generic [ref=e40]: Sab
+              - generic [ref=e42]: Min
+              - generic [ref=e44]: Sen
+              - generic [ref=e46]: Sel
+              - generic [ref=e48]: Rab
+            - generic [ref=e50]:
+              - generic [ref=e52]: 0k
+              - generic [ref=e54]: 0k
+              - generic [ref=e56]: 0k
+              - generic [ref=e58]: 0k
+              - generic [ref=e60]: 0k
+        - generic [ref=e61]:
+          - heading "Komposisi Kategori" [level=3] [ref=e62]
+          - paragraph [ref=e63]: Belum cukup data untuk menampilkan komposisi kategori.
+    - navigation [ref=e64]:
+      - link "grid_view Dashboard" [ref=e65] [cursor=pointer]:
+        - /url: /
+        - generic [ref=e66]: grid_view
+        - generic [ref=e67]: Dashboard
+      - link "account_balance_wallet Buku" [ref=e68] [cursor=pointer]:
+        - /url: /buku
+        - generic [ref=e69]: account_balance_wallet
+        - generic [ref=e70]: Buku
+      - link "Tambah Transaksi" [ref=e71] [cursor=pointer]:
+        - /url: /tambah
+        - generic [ref=e72]: add
+      - link "query_stats Insights" [ref=e73] [cursor=pointer]:
+        - /url: /laporan
+        - generic [ref=e74]: query_stats
+        - generic [ref=e75]: Insights
+      - link "settings Settings" [ref=e76] [cursor=pointer]:
+        - /url: /profil
+        - generic [ref=e77]: settings
+        - generic [ref=e78]: Settings
+  - generic [ref=e79]: 0k
