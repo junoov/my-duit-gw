@@ -8,9 +8,9 @@ import { addTransaction } from "../services/transactionService";
 import { formatRupiahInput, parseRupiahInput } from "../utils/currency";
 import { toDateTimeInputValue } from "../utils/date";
 import { parseReceiptText } from "../utils/ocrParser";
+import { parseMultipleVoiceCommands } from "../utils/voiceCommandParser";
 
 const defaultDateTime = toDateTimeInputValue(new Date());
-const voiceDraftStorageKey = "warta_artha_voice_draft";
 
 function normalizeEditableLineItems(items) {
   if (!Array.isArray(items)) {
@@ -64,6 +64,14 @@ function AddTransactionPage() {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const ocrModuleRef = useRef(null);
+  const voiceRecognitionRef = useRef(null);
+  const voiceTranscriptTimeoutRef = useRef(null);
+  const latestVoiceTranscriptRef = useRef("");
+
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState("Gunakan voice untuk isi form lebih cepat.");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
 
   const formattedAmount = useMemo(() => formatRupiahInput(amount), [amount]);
   const formattedScanAmount = useMemo(() => formatRupiahInput(scanAmount), [scanAmount]);
@@ -105,41 +113,286 @@ function AddTransactionPage() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      return;
+      return undefined;
     }
 
-    const rawDraft = window.sessionStorage.getItem(voiceDraftStorageKey);
-    if (!rawDraft) {
-      return;
+    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      setVoiceSupported(false);
+      setVoiceStatus("Voice belum didukung browser ini.");
+      return undefined;
     }
 
-    try {
-      const draft = JSON.parse(rawDraft);
-      if (draft && typeof draft === "object") {
-        if (draft.type === "expense" || draft.type === "income") {
-          setType(draft.type);
-        }
-        if (Number.isFinite(Number(draft.amount)) && Number(draft.amount) > 0) {
-          setAmount(Math.round(Number(draft.amount)));
-        }
-        if (typeof draft.categoryId === "string" && draft.categoryId.trim().length > 0) {
-          setManualCategory(draft.categoryId.trim());
-        }
-        if (typeof draft.description === "string" && draft.description.trim().length > 0) {
-          setDescription(draft.description.trim());
-        }
-        setActiveTab("manual");
-        setMessage("Draft voice sudah diterapkan (belum tersimpan). Cek lalu tekan Simpan Transaksi.");
+    const recognition = new SpeechRecognitionClass();
+    recognition.lang = "id-ID";
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+
+    const clearTranscriptTimeout = () => {
+      if (voiceTranscriptTimeoutRef.current) {
+        window.clearTimeout(voiceTranscriptTimeoutRef.current);
+        voiceTranscriptTimeoutRef.current = null;
       }
-    } catch (error) {
-      console.warn("Gagal memuat draft voice", error);
-    } finally {
-      window.sessionStorage.removeItem(voiceDraftStorageKey);
-    }
+    };
+
+    const applyVoiceToForm = async (transcript) => {
+      const cleanTranscript = String(transcript || "").trim();
+      if (!cleanTranscript) {
+        return;
+      }
+
+      const commands = parseMultipleVoiceCommands(cleanTranscript);
+      if (commands.length === 0) {
+        setVoiceStatus("Perintah belum dikenali. Contoh: pengeluaran kopi 18 ribu.");
+        return;
+      }
+
+      // If multiple commands, auto-save all except the last one
+      let autoSavedCount = 0;
+      if (commands.length > 1) {
+        for (let i = 0; i < commands.length - 1; i++) {
+          const cmd = commands[i];
+          try {
+            const currentAccountId = manualAccountId || (accounts.length > 0 ? accounts[0].id : "");
+            const currentAccountLabel = accounts.find(a => a.id === currentAccountId)?.name || "";
+            if (currentAccountId && cmd.amount > 0) {
+              await addTransaction({
+                type: cmd.type || "expense",
+                amount: cmd.amount,
+                category: cmd.categoryId || defaultCategoryId,
+                description: cmd.description || "Voice input",
+                date: new Date().toISOString(),
+                accountId: currentAccountId,
+                accountLabel: currentAccountLabel,
+                inputMethod: "manual"
+              });
+              autoSavedCount++;
+            }
+          } catch (err) {
+            console.warn("Gagal auto-save voice command", err);
+          }
+        }
+      }
+
+      // Apply the last (or only) command to the form
+      const lastCmd = commands[commands.length - 1];
+      setActiveTab("manual");
+      if (lastCmd.type) {
+        setType(lastCmd.type);
+      }
+      if (lastCmd.amount > 0) {
+        setAmount(lastCmd.amount);
+      }
+      if (lastCmd.categoryId) {
+        setManualCategory(lastCmd.categoryId);
+      }
+      if (lastCmd.description) {
+        setDescription(lastCmd.description);
+      }
+
+      if (autoSavedCount > 0) {
+        setMessage(`${autoSavedCount} transaksi otomatis tersimpan! Yang terakhir diterapkan ke form, cek lalu simpan.`);
+        setVoiceStatus(`${autoSavedCount + 1} transaksi terdeteksi dari voice.`);
+      } else {
+        setMessage("Draft voice sudah diterapkan (belum tersimpan). Cek lalu tekan Simpan Transaksi.");
+        setVoiceStatus("Input voice berhasil diterapkan ke form manual.");
+      }
+    };
+
+    const scheduleApplyFromInterim = () => {
+      clearTranscriptTimeout();
+      voiceTranscriptTimeoutRef.current = window.setTimeout(() => {
+        applyVoiceToForm(latestVoiceTranscriptRef.current);
+      }, 900);
+    };
+
+    recognition.onstart = () => {
+      clearTranscriptTimeout();
+      latestVoiceTranscriptRef.current = "";
+      setVoiceListening(true);
+      setVoiceStatus("Mendengarkan... silakan bicara.");
+      setVoiceTranscript("");
+    };
+
+    recognition.onend = () => {
+      clearTranscriptTimeout();
+      setVoiceListening(false);
+      setVoiceStatus((prev) =>
+        prev === "Mendengarkan... silakan bicara." || prev === "Menyalakan mikrofon..."
+          ? "Ketuk tombol mic untuk input voice."
+          : prev
+      );
+    };
+
+    recognition.onresult = (event) => {
+      let latestFinalTranscript = "";
+      let latestInterimTranscript = "";
+
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript?.trim();
+        if (!transcript) {
+          continue;
+        }
+
+        if (result.isFinal) {
+          latestFinalTranscript = transcript;
+        } else {
+          latestInterimTranscript = transcript;
+        }
+      }
+
+      if (latestFinalTranscript) {
+        latestVoiceTranscriptRef.current = latestFinalTranscript;
+        setVoiceTranscript(latestFinalTranscript);
+        applyVoiceToForm(latestFinalTranscript);
+        recognition.stop();
+        return;
+      }
+
+      if (latestInterimTranscript) {
+        latestVoiceTranscriptRef.current = latestInterimTranscript;
+        setVoiceTranscript(latestInterimTranscript);
+        scheduleApplyFromInterim();
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (event.error === "aborted") {
+        return;
+      }
+
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setVoiceStatus("Izin mikrofon ditolak. Aktifkan akses mic di browser.");
+        return;
+      }
+
+      if (event.error === "audio-capture") {
+        setVoiceStatus("Mikrofon tidak terdeteksi.");
+        return;
+      }
+
+      if (event.error === "no-speech") {
+        setVoiceStatus("Tidak ada suara terdeteksi. Coba lebih dekat ke mikrofon.");
+        return;
+      }
+
+      if (event.error === "network") {
+        setVoiceStatus("Layanan voice browser bermasalah jaringan. Coba ulangi.");
+        return;
+      }
+
+      setVoiceStatus("Voice input gagal. Coba lagi.");
+    };
+
+    voiceRecognitionRef.current = recognition;
+    setVoiceSupported(true);
+
+    return () => {
+      clearTranscriptTimeout();
+      recognition.onstart = null;
+      recognition.onend = null;
+      recognition.onresult = null;
+      recognition.onerror = null;
+      try {
+        recognition.stop();
+      } catch (cleanupError) {
+        console.warn("Gagal cleanup voice recognition", cleanupError);
+      }
+      voiceRecognitionRef.current = null;
+    };
   }, []);
 
   const clearNotification = () => {
     setMessage("");
+  };
+
+  const ensureMicrophonePermission = async () => {
+    if (typeof window === "undefined") {
+      return { ok: false, message: "Mode voice hanya tersedia di browser." };
+    }
+
+    const isSecureHost =
+      window.location.protocol === "https:" ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1";
+
+    if (!isSecureHost) {
+      return {
+        ok: false,
+        message: "Di HP, akses mikrofon butuh HTTPS. URL LAN HTTP diblok browser."
+      };
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return {
+        ok: false,
+        message: "Browser tidak mendukung akses mikrofon (getUserMedia)."
+      };
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      return { ok: true, message: "" };
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          return {
+            ok: false,
+            message: "Izin mikrofon ditolak. Aktifkan di setting situs Chrome lalu coba lagi."
+          };
+        }
+
+        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          return {
+            ok: false,
+            message: "Mikrofon tidak ditemukan di perangkat ini."
+          };
+        }
+      }
+
+      return {
+        ok: false,
+        message: "Gagal mengakses mikrofon. Coba refresh halaman lalu ulangi."
+      };
+    }
+  };
+
+  const handleToggleVoice = async () => {
+    if (!voiceSupported || !voiceRecognitionRef.current) {
+      setVoiceStatus("Voice input belum tersedia di browser ini.");
+      return;
+    }
+
+    if (voiceListening) {
+      try {
+        voiceRecognitionRef.current.stop();
+      } catch (error) {
+        console.warn("Gagal stop voice recognition", error);
+      }
+      return;
+    }
+
+    const permission = await ensureMicrophonePermission();
+    if (!permission.ok) {
+      setVoiceStatus(permission.message);
+      return;
+    }
+
+    setVoiceStatus("Menyalakan mikrofon...");
+    try {
+      voiceRecognitionRef.current.start();
+    } catch (error) {
+      if (error instanceof Error && error.name === "InvalidStateError") {
+        setVoiceStatus("Mikrofon sedang inisialisasi. Tunggu sebentar lalu coba lagi.");
+        return;
+      }
+
+      setVoiceStatus("Mikrofon gagal dinyalakan. Pastikan tidak dipakai aplikasi lain.");
+      console.warn("Gagal start voice recognition", error);
+    }
   };
 
   const handleAmountInput = (value) => {
@@ -342,6 +595,29 @@ function AddTransactionPage() {
 
   return (
     <div className="space-y-6">
+      <section className="bg-surface-container-low rounded-3xl p-4 sm:p-6 flex items-center justify-between gap-4">
+        <div className="space-y-1">
+          <h3 className="text-lg font-bold text-on-surface">Voice Input</h3>
+          <p className="text-sm text-on-surface-variant line-clamp-2 break-words max-w-[240px] sm:max-w-md">
+            {voiceTranscript ? `"${voiceTranscript}"` : voiceStatus}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleToggleVoice}
+          disabled={!voiceSupported}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 select-none outline-none disabled:opacity-40 ${
+            voiceListening
+              ? "bg-error text-on-error shadow-[0_0_20px_rgba(255,180,171,0.3)] animate-pulse scale-90"
+              : "bg-primary text-on-primary shadow-[0_0_20px_rgba(78,222,163,0.3)] hover:scale-105 active:scale-95 cursor-pointer"
+          }`}
+        >
+          <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+            mic
+          </span>
+        </button>
+      </section>
+
       <section className="bg-surface-container-highest rounded-full flex p-1.5 gap-1 mx-auto max-w-sm">
         <button
           type="button"

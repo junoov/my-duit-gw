@@ -50,7 +50,7 @@ const CATEGORY_COMMAND_PATTERN = /(?:^|\s)kategori\s+([a-z\s]+)/;
 const NOTE_COMMAND_PATTERN = /(?:^|\s)(?:catatan|deskripsi)\s+(.+)$/;
 
 const CATEGORY_KEYWORDS = {
-  makanan_minuman: ["makan", "makanan", "minum", "minuman", "bakmi", "nasi", "restoran", "resto", "kopi", "jajan"],
+  makanan_minuman: ["makan", "makanan", "minum", "minuman", "bakmi", "nasi", "restoran", "resto", "kopi", "jajan", "gacoan", "mcd", "kfc", "starbucks", "mixue", "chatime", "geprek", "ayam", "sate", "bakso", "mie"],
   transportasi: ["transport", "transportasi", "bensin", "bbm", "ojek", "gojek", "grab", "parkir", "tol", "bus", "kereta", "taksi"],
   kebutuhan_harian: ["belanja", "sembako", "harian", "minimarket", "supermarket", "alfamart", "indomaret"],
   tagihan: ["tagihan", "listrik", "air", "internet", "wifi", "pulsa", "bpjs"],
@@ -304,4 +304,50 @@ export function parseVoiceTransactionCommand(transcript) {
     description,
     type
   };
+}
+
+/**
+ * Splits a voice transcript on conjunctions like "sama", "dan", "terus", "lalu"
+ * and parses each segment as a separate transaction command.
+ * Returns an array of parsed results (only segments that have at least amount or description).
+ * The first detected type (expense/income) is inherited by subsequent segments that lack one.
+ */
+export function parseMultipleVoiceCommands(transcript) {
+  const normalizedText = normalizeText(transcript);
+  if (!normalizedText) {
+    return [];
+  }
+
+  // Split on common Indonesian conjunctions
+  const segments = normalizedText.split(/\b(?:sama|dan|terus|lalu|juga)\b/).map(s => s.trim()).filter(Boolean);
+
+  if (segments.length <= 1) {
+    // No split needed, return single result
+    const single = parseVoiceTransactionCommand(transcript);
+    if (single.amount > 0 || single.description) {
+      return [single];
+    }
+    return [];
+  }
+
+  const results = [];
+  let inheritedType = "";
+
+  for (const segment of segments) {
+    const parsed = parseVoiceTransactionCommand(segment);
+
+    // Inherit type from first segment that has one
+    if (parsed.type) {
+      inheritedType = parsed.type;
+    } else if (inheritedType) {
+      parsed.type = inheritedType;
+    }
+
+    // Only include if we got something useful
+    if (parsed.amount > 0 || parsed.description) {
+      results.push(parsed);
+    }
+  }
+
+  return results;
 }
