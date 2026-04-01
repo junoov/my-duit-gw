@@ -43,6 +43,11 @@ function AccountHistoryPage() {
     );
   }, [accountTransactions]);
 
+  const currentBalance = useMemo(() => {
+    if (!account) return 0;
+    return (account.incomeTotal || 0) - (account.expenseTotal || 0);
+  }, [account]);
+
   if (loading) {
     return <p className="text-center text-sm font-medium text-on-surface-variant p-8">Memuat data rekening...</p>;
   }
@@ -80,7 +85,7 @@ function AccountHistoryPage() {
               <div className="flex items-baseline gap-2">
                 <span className="text-on-surface-variant text-lg font-medium">Rp</span>
                 <span className="text-3xl font-bold leading-none tracking-tight text-on-surface">
-                  {formatRupiah(summary.balance).replace('Rp', '').trim()}
+                  {formatRupiah(currentBalance).replace('Rp', '').trim()}
                 </span>
               </div>
             </div>

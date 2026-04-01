@@ -19,7 +19,7 @@ function BooksPage() {
   const [typeInput, setTypeInput] = useState("cash");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingName, setEditingName] = useState("");
-  const [editingIncome, setEditingIncome] = useState(0);
+  const [editingBalance, setEditingBalance] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
 
@@ -59,7 +59,7 @@ function BooksPage() {
   const startEditing = (account) => {
     setEditingAccountId(account.id);
     setEditingName(account.name);
-    setEditingIncome(account.incomeTotal || 0);
+    setEditingBalance((account.incomeTotal || 0) - (account.expenseTotal || 0));
   };
 
   const saveRename = async () => {
@@ -71,17 +71,19 @@ function BooksPage() {
     try {
       await renameAccount(editingAccountId, editingName);
 
-      // Simpan selisih income langsung di data rekening (tanpa buat history)
+      // Simpan selisih balance langsung di data rekening (tanpa buat history)
       const currentAccount = summary.accounts.find(a => a.id === editingAccountId);
-      const currentTransactionIncome = (currentAccount?.incomeTotal || 0) - (currentAccount?.incomeAdjustment || 0);
+      const oldBalance = (currentAccount?.incomeTotal || 0) - (currentAccount?.expenseTotal || 0);
 
-      if (editingIncome !== (currentAccount?.incomeTotal || 0)) {
-        await updateIncomeAdjustment(editingAccountId, editingIncome, currentTransactionIncome);
+      if (editingBalance !== oldBalance) {
+        const desiredIncome = editingBalance + (currentAccount?.expenseTotal || 0);
+        const currentTransactionIncome = (currentAccount?.incomeTotal || 0) - (currentAccount?.incomeAdjustment || 0);
+        await updateIncomeAdjustment(editingAccountId, desiredIncome, currentTransactionIncome);
       }
 
       setEditingAccountId("");
       setEditingName("");
-      setEditingIncome(0);
+      setEditingBalance(0);
       showToast({ message: "Rekening berhasil diperbarui." });
     } catch (error) {
       showToast({
@@ -235,31 +237,31 @@ function BooksPage() {
                 </div>
                 
                 <div className="flex flex-wrap items-center gap-8">
-                  <div>
-                    <span className="text-[10px] font-medium text-on-surface-variant block mb-0.5">BALANCE</span>
-                    <span className="font-bold text-on-surface">{formatRupiah(balance)}</span>
-                  </div>
-                  
                   {editingAccountId === account.id ? (
                     <div>
-                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">BALANCE</span>
                       <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
                         <span className="text-xs font-bold text-primary">Rp</span>
                         <input
                           type="text"
                           inputMode="numeric"
-                          value={formatRupiahInput(editingIncome)}
-                          onChange={(event) => setEditingIncome(parseRupiahInput(event.target.value))}
+                          value={formatRupiahInput(editingBalance)}
+                          onChange={(event) => setEditingBalance(parseRupiahInput(event.target.value))}
                           className="bg-transparent border-none text-primary text-sm font-bold w-28 outline-none px-1"
                         />
                       </div>
                     </div>
                   ) : (
-                    <div className="hidden sm:block">
-                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
-                      <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
+                    <div>
+                      <span className="text-[10px] font-medium text-on-surface-variant block mb-0.5">BALANCE</span>
+                      <span className="font-bold text-on-surface">{formatRupiah(balance)}</span>
                     </div>
                   )}
+                  
+                  <div className="hidden sm:block">
+                    <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                    <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
+                  </div>
                   
                   <div className="hidden sm:block">
                     <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
