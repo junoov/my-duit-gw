@@ -16,6 +16,8 @@ function HomePage() {
   const { transactions, summary } = useTransactions();
   const { accounts } = useAccounts();
   const recognitionRef = useRef(null);
+  const transcriptApplyTimeoutRef = useRef(null);
+  const latestTranscriptRef = useRef("");
 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
@@ -45,41 +47,27 @@ function HomePage() {
 
     const recognition = new SpeechRecognitionClass();
     recognition.lang = "id-ID";
-    recognition.continuous = false; // Only listen for one duration (tap-to-talk)
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-      setVoiceListening(true);
-      setVoiceStatus("Mendengarkan... Silakan bicara.");
-    };
-
-    recognition.onend = () => {
-      setVoiceListening(false);
-      setVoiceStatus((prev) => 
-        (prev === "Mendengarkan... Silakan bicara." || prev === "Menyalakan mikrofon...")
-          ? "Ketuk ikon 🎤 untuk bicara." 
-          : prev
-      );
-    };
-
-    recognition.onresult = (event) => {
-      let latestFinalTranscript = "";
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
-        const result = event.results[index];
-        if (result.isFinal && result[0]?.transcript) {
-          latestFinalTranscript = result[0].transcript.trim();
-        }
+    const clearTranscriptApplyTimeout = () => {
+      if (transcriptApplyTimeoutRef.current) {
+        window.clearTimeout(transcriptApplyTimeoutRef.current);
+        transcriptApplyTimeoutRef.current = null;
       }
+    };
 
-      if (!latestFinalTranscript) {
+    const applyVoiceTranscript = (transcript) => {
+      const cleanTranscript = String(transcript || "").trim();
+      if (!cleanTranscript) {
         return;
       }
 
-      setVoiceTranscript(latestFinalTranscript);
-      const parsed = parseVoiceTransactionCommand(latestFinalTranscript);
+      setVoiceTranscript(cleanTranscript);
+
+      const parsed = parseVoiceTransactionCommand(cleanTranscript);
       if (!parsed.type && !parsed.amount && !parsed.categoryId && !parsed.description) {
-        setVoiceTranscript("");
         setVoiceStatus("Perintah belum dikenali. Coba: pengeluaran makan 25 ribu.");
         return;
       }
@@ -96,9 +84,65 @@ function HomePage() {
         );
       }
 
+      clearTranscriptApplyTimeout();
       recognition.stop();
       setVoiceStatus("Perintah diterima. Mengarahkan ke Tambah Transaksi...");
       navigate("/tambah");
+    };
+
+    const scheduleTranscriptApply = () => {
+      clearTranscriptApplyTimeout();
+      transcriptApplyTimeoutRef.current = window.setTimeout(() => {
+        applyVoiceTranscript(latestTranscriptRef.current);
+      }, 900);
+    };
+
+    recognition.onstart = () => {
+      clearTranscriptApplyTimeout();
+      latestTranscriptRef.current = "";
+      setVoiceListening(true);
+      setVoiceStatus("Mendengarkan... Silakan bicara.");
+    };
+
+    recognition.onend = () => {
+      clearTranscriptApplyTimeout();
+      setVoiceListening(false);
+      setVoiceStatus((prev) => 
+        (prev === "Mendengarkan... Silakan bicara." || prev === "Menyalakan mikrofon...")
+          ? "Ketuk ikon 🎤 untuk bicara." 
+          : prev
+      );
+    };
+
+    recognition.onresult = (event) => {
+      let latestFinalTranscript = "";
+      let latestInterimTranscript = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        const transcript = result[0]?.transcript?.trim();
+        if (!transcript) {
+          continue;
+        }
+
+        if (result.isFinal) {
+          latestFinalTranscript = transcript;
+        } else {
+          latestInterimTranscript = transcript;
+        }
+      }
+
+      if (latestFinalTranscript) {
+        latestTranscriptRef.current = latestFinalTranscript;
+        applyVoiceTranscript(latestFinalTranscript);
+        return;
+      }
+
+      if (latestInterimTranscript) {
+        latestTranscriptRef.current = latestInterimTranscript;
+        setVoiceTranscript(latestInterimTranscript);
+        setVoiceStatus("Mendengar suara... lanjutkan bicara.");
+        scheduleTranscriptApply();
+      }
     };
 
     recognition.onerror = (event) => {
@@ -119,18 +163,23 @@ function HomePage() {
       }
 
       if (event.error === "no-speech") {
+        setVoiceStatus("Tidak ada suara terdeteksi. Coba bicara lebih dekat ke mikrofon.");
         return;
       }
 
       if (event.error === "network") {
+        setVoiceStatus("Layanan voice browser bermasalah jaringan. Coba ulangi.");
         return;
       }
+
+      setVoiceStatus("Voice input gagal. Coba lagi.");
     };
 
     recognitionRef.current = recognition;
     setVoiceSupported(true);
 
     return () => {
+      clearTranscriptApplyTimeout();
       recognition.onstart = null;
       recognition.onend = null;
       recognition.onresult = null;
@@ -144,7 +193,45 @@ function HomePage() {
     };
   }, [navigate]);
 
-  const handleToggleVoice = (e) => {
+  const ensureMicrophonePermission = async () => {
+    if (typeof window === "undefined") {
+      return { ok: false, message: "Mode voice hanya tersedia di browser." };
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return {
+        ok: false,
+        message: "Browser tidak mendukung akses mikrofon (getUserMedia)."
+      };
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      return { ok: true, message: "" };
+    } catch (error) {
+      if (error instanceof Error) {
+        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
+          return {
+            ok: false,
+            message: "Izin mikrofon ditolak. Aktifkan di setting situs Chrome (icon gembok) lalu coba lagi."
+          };
+        }
+        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
+          return {
+            ok: false,
+            message: "Mikrofon tidak ditemukan di perangkat ini."
+          };
+        }
+      }
+      return {
+        ok: false,
+        message: "Gagal mengakses mikrofon. Coba refresh halaman lalu ulangi."
+      };
+    }
+  };
+
+  const handleToggleVoice = async (e) => {
     if (e && e.cancelable) e.preventDefault();
     
     if (!voiceSupported || !recognitionRef.current) {
@@ -153,7 +240,6 @@ function HomePage() {
     }
 
     if (voiceListening) {
-      // If currently listening, stop it
       try {
         recognitionRef.current.stop();
       } catch (err) {
@@ -162,9 +248,14 @@ function HomePage() {
       return;
     }
 
-    // Start listening
     setVoiceTranscript("");
     setVoiceStatus("Menyalakan mikrofon...");
+
+    const permission = await ensureMicrophonePermission();
+    if (!permission.ok) {
+      setVoiceStatus(permission.message);
+      return;
+    }
 
     try {
       recognitionRef.current.start();

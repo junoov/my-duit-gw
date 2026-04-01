@@ -129,7 +129,7 @@ function AddTransactionPage() {
           setDescription(draft.description.trim());
         }
         setActiveTab("manual");
-        setMessage("Draft dari input suara sudah diterapkan. Silakan cek lalu simpan.");
+        setMessage("Draft voice sudah diterapkan (belum tersimpan). Cek lalu tekan Simpan Transaksi.");
       }
     } catch (error) {
       console.warn("Gagal memuat draft voice", error);
