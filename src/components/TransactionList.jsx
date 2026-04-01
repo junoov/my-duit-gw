@@ -1,5 +1,6 @@
 import { resolveTransactionAccountLabel } from "../services/accountService";
 import { formatRupiah } from "../utils/currency";
+import { formatTransactionDateTime } from "../utils/date";
 import { useCategories } from "../hooks/useCategories";
 import { useMemo, useState } from "react";
 
@@ -28,7 +29,9 @@ function TransactionList({ transactions, accountMap, onSelectTransaction }) {
   const [visibleCount, setVisibleCount] = useState(15);
 
   const visibleTransactions = useMemo(() => {
-    return transactions.slice(0, visibleCount);
+    return [...transactions]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, visibleCount);
   }, [transactions, visibleCount]);
 
   const groupedTransactions = useMemo(() => {
@@ -106,6 +109,8 @@ function TransactionList({ transactions, accountMap, onSelectTransaction }) {
                       <p className="font-bold text-on-surface line-clamp-1 break-words max-w-[150px] sm:max-w-xs">{tx.description}</p>
                       <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-medium tracking-widest uppercase text-on-surface-variant">
                         <span>{accountLabel}</span>
+                        <span className="opacity-50">•</span>
+                        <span>{formatTransactionDateTime(tx.date)}</span>
                       </div>
                     </div>
                   </div>

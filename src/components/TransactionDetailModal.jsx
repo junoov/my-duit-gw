@@ -1,18 +1,42 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { resolveTransactionAccountLabel } from "../services/accountService";
-import { formatRupiah } from "../utils/currency";
-import { formatTransactionDateTime } from "../utils/date";
+import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
+import { formatTransactionDateTime, toDateTimeInputValue } from "../utils/date";
 import { useCategories } from "../hooks/useCategories";
+import { updateTransaction } from "../services/transactionService";
+import { useToast } from "../context/ToastContext";
+import CategoryPicker from "./CategoryPicker";
 
 function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) {
   const { getCategoryMeta } = useCategories();
+  const { showToast } = useToast();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editAmount, setEditAmount] = useState(0);
+  const [editCategory, setEditCategory] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
+  const [editDate, setEditDate] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (transaction) {
       document.body.style.overflow = "hidden";
+      setIsEditing(false);
+      setEditAmount(transaction.amount);
+      setEditCategory(transaction.category);
+      setEditDescription(transaction.description);
+      setEditAccountId(transaction.accountId);
+      
+      const txDate = new Date(transaction.date);
+      if (!Number.isNaN(txDate.getTime())) {
+        setEditDate(toDateTimeInputValue(txDate));
+      } else {
+        setEditDate(toDateTimeInputValue(new Date()));
+      }
     }
     return () => {
       document.body.style.overflow = "";
@@ -21,6 +45,9 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
     };
   }, [transaction]);
 
+  const formattedEditAmount = useMemo(() => formatRupiahInput(editAmount), [editAmount]);
+  const accounts = useMemo(() => Array.from(accountMap?.values() || []), [accountMap]);
+
   if (!transaction) {
     return null;
   }
@@ -28,6 +55,41 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
   const category = getCategoryMeta(transaction.category);
   const accountLabel = resolveTransactionAccountLabel(transaction, accountMap);
   const methodLabel = transaction.inputMethod === "scan" ? "Scan struk" : "Input manual";
+
+  const toggleEdit = () => {
+    if (isEditing) {
+      setEditAmount(transaction.amount);
+      setEditCategory(transaction.category);
+      setEditDescription(transaction.description);
+      setEditAccountId(transaction.accountId);
+      const txDate = new Date(transaction.date);
+      if (!Number.isNaN(txDate.getTime())) {
+        setEditDate(toDateTimeInputValue(txDate));
+      }
+    }
+    setIsEditing(!isEditing);
+  };
+
+  const handleUpdate = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await updateTransaction(transaction.id, {
+        amount: editAmount,
+        category: editCategory,
+        description: editDescription,
+        accountId: editAccountId,
+        date: editDate,
+      });
+      showToast({ message: "Transaksi berhasil diperbarui" });
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Gagal update transaksi", err);
+      showToast({ message: "Gagal menyimpan: " + err.message, type: "error" });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-4 sm:p-6 pb-0 sm:pb-6" role="presentation" onClick={onClose}>
@@ -44,108 +106,204 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
         
         <header className="flex justify-between items-start pt-4 sm:pt-6 px-6 pb-4 border-b border-outline-variant/20">
           <div>
-            <p className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant mb-1">Detail Transaksi</p>
-            <h3 className="text-xl font-bold text-on-surface">{transaction.description}</h3>
+            <p className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant mb-1">
+              {isEditing ? "Edit Transaksi" : "Detail Transaksi"}
+            </p>
+            {!isEditing && <h3 className="text-xl font-bold text-on-surface">{transaction.description}</h3>}
           </div>
-          <button type="button" className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-bright transition-colors" onClick={onClose} aria-label="Tutup detail transaksi">
-            <span className="material-symbols-outlined text-lg">close</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <button 
+                type="button" 
+                className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-primary hover:bg-primary/10 transition-colors"
+                onClick={toggleEdit}
+                aria-label="Edit transaksi"
+              >
+                <span className="material-symbols-outlined text-[18px]">edit</span>
+              </button>
+            )}
+            <button type="button" className="w-8 h-8 rounded-full bg-surface-container-highest flex items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-bright transition-colors" onClick={onClose} aria-label="Tutup">
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+          </div>
         </header>
 
         <div className="overflow-y-auto px-6 py-6 space-y-8">
-          <div className="text-center space-y-1">
-            <span className="text-sm font-medium text-on-surface-variant block">Nominal Transaksi</span>
-            <p className={`text-4xl font-bold font-headline ${transaction.type === "expense" ? "text-tertiary" : "text-primary"}`}>
-              {transaction.type === "expense" ? "-" : "+"}
-              {formatRupiah(transaction.amount)}
-            </p>
-          </div>
+          {isEditing ? (
+            <form onSubmit={handleUpdate} className="space-y-6">
+              <label className="block space-y-2">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Nominal Transaksi</span>
+                <div className={`flex items-center bg-surface-container-lowest rounded-xl px-4 overflow-hidden border-2 transition-colors focus-within:bg-white focus-within:border-primary border-transparent`}>
+                  <strong className={`text-xl font-bold ${transaction.type === 'expense' ? 'text-tertiary' : 'text-primary'} focus-within:text-surface-container-low`}>Rp</strong>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formattedEditAmount}
+                    onChange={(e) => setEditAmount(parseRupiahInput(e.target.value))}
+                    className="w-full bg-transparent border-none py-3 px-3 text-2xl font-bold font-headline text-on-surface outline-none focus:text-surface-container-low"
+                    required
+                  />
+                </div>
+              </label>
 
-          <div className="grid grid-cols-2 gap-4">
-            <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden group">
-              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Kategori</span>
-              <strong className="text-sm font-bold text-on-surface flex items-center gap-2">
-                <span className="material-symbols-outlined text-[16px] opacity-70" style={{fontVariationSettings: "'FILL' 1"}}>{category.icon}</span>
-                {category.label}
-              </strong>
-            </article>
-            <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
-              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Akun</span>
-              <strong className="text-sm font-bold text-on-surface">{accountLabel}</strong>
-            </article>
-            <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
-              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Waktu</span>
-              <strong className="text-sm font-bold text-on-surface">{formatTransactionDateTime(transaction.date)}</strong>
-            </article>
-            <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
-              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Metode Input</span>
-              <strong className="text-sm font-bold text-on-surface">{methodLabel}</strong>
-            </article>
-          </div>
+              <label className="block space-y-2">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Catatan</span>
+                <input
+                  type="text"
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium"
+                />
+              </label>
 
-          {Array.isArray(transaction.lineItems) && transaction.lineItems.length > 0 && (
-            <section className="bg-surface-container-lowest/50 p-5 rounded-3xl border border-outline-variant/20">
-              <h4 className="text-sm font-bold tracking-tight text-on-surface mb-3 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[18px]">receipt_long</span> Rincian Item
-              </h4>
-              <div className="space-y-3">
-                {transaction.lineItems.map((item, index) => (
-                  <div className="flex justify-between items-center text-sm" key={`${item.name}-${index}`}>
-                    <div className="flex-1">
-                      <p className="font-medium text-on-surface">{item.name}</p>
-                      <p className="text-[11px] text-on-surface-variant/70 font-medium tracking-wider uppercase">{item.quantity}x</p>
-                    </div>
-                    <strong className="font-bold text-on-surface text-right">{formatRupiah(item.amount)}</strong>
-                  </div>
-                ))}
+              <div className="space-y-2">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Kategori</span>
+                <div className="bg-surface-container-lowest rounded-xl p-2 border border-transparent focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/40 transition-all">
+                  <CategoryPicker value={editCategory} onChange={setEditCategory} />
+                </div>
               </div>
-            </section>
-          )}
 
-          {onDelete && (
-            <div className="pt-2">
-              {!confirmDelete ? (
+              <label className="block space-y-2">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Akun</span>
+                <select
+                  value={editAccountId}
+                  onChange={(e) => setEditAccountId(e.target.value)}
+                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium appearance-none"
+                  required
+                >
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="block space-y-2">
+                <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Tanggal & Waktu</span>
+                <input
+                  type="datetime-local"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium"
+                  style={{ colorScheme: "dark" }}
+                  required
+                />
+              </label>
+
+              <div className="flex gap-3 pt-4">
                 <button
                   type="button"
-                  onClick={() => setConfirmDelete(true)}
-                  className="w-full py-3.5 rounded-xl text-sm font-bold text-error bg-error/10 hover:bg-error/20 transition-colors flex items-center justify-center gap-2"
+                  onClick={toggleEdit}
+                  disabled={saving}
+                  className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface bg-surface-container-highest hover:bg-surface-bright transition-colors"
                 >
-                  <span className="material-symbols-outlined text-lg">delete</span>
-                  Hapus Transaksi
+                  Batal
                 </button>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-xs text-center text-on-surface-variant">Yakin hapus? Saldo akan dikembalikan otomatis.</p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(false)}
-                      disabled={deleting}
-                      className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface-variant bg-surface-container-highest hover:bg-surface-bright transition-colors"
-                    >
-                      Batal
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setDeleting(true);
-                        try {
-                          await onDelete(transaction.id);
-                          onClose();
-                        } catch (err) {
-                          console.error("Gagal hapus transaksi", err);
-                          setDeleting(false);
-                        }
-                      }}
-                      disabled={deleting}
-                      className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-primary bg-error hover:bg-error/80 transition-colors"
-                    >
-                      {deleting ? "Menghapus..." : "Ya, Hapus"}
-                    </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors"
+                >
+                  {saving ? "Menyimpan..." : "Simpan Perubahan"}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <>
+              <div className="text-center space-y-1">
+                <span className="text-sm font-medium text-on-surface-variant block">Nominal Transaksi</span>
+                <p className={`text-4xl font-bold font-headline ${transaction.type === "expense" ? "text-tertiary" : "text-primary"}`}>
+                  {transaction.type === "expense" ? "-" : "+"}
+                  {formatRupiah(transaction.amount)}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden group">
+                  <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Kategori</span>
+                  <strong className="text-sm font-bold text-on-surface flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[16px] opacity-70" style={{fontVariationSettings: "'FILL' 1"}}>{category.icon}</span>
+                    {category.label}
+                  </strong>
+                </article>
+                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                  <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Akun</span>
+                  <strong className="text-sm font-bold text-on-surface">{accountLabel}</strong>
+                </article>
+                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                  <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Waktu</span>
+                  <strong className="text-sm font-bold text-on-surface">{formatTransactionDateTime(transaction.date)}</strong>
+                </article>
+                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                  <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Metode Input</span>
+                  <strong className="text-sm font-bold text-on-surface">{methodLabel}</strong>
+                </article>
+              </div>
+
+              {Array.isArray(transaction.lineItems) && transaction.lineItems.length > 0 && (
+                <section className="bg-surface-container-lowest/50 p-5 rounded-3xl border border-outline-variant/20">
+                  <h4 className="text-sm font-bold tracking-tight text-on-surface mb-3 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px]">receipt_long</span> Rincian Item
+                  </h4>
+                  <div className="space-y-3">
+                    {transaction.lineItems.map((item, index) => (
+                      <div className="flex justify-between items-center text-sm" key={`${item.name}-${index}`}>
+                        <div className="flex-1">
+                          <p className="font-medium text-on-surface">{item.name}</p>
+                          <p className="text-[11px] text-on-surface-variant/70 font-medium tracking-wider uppercase">{item.quantity}x</p>
+                        </div>
+                        <strong className="font-bold text-on-surface text-right">{formatRupiah(item.amount)}</strong>
+                      </div>
+                    ))}
                   </div>
+                </section>
+              )}
+
+              {onDelete && (
+                <div className="pt-2">
+                  {!confirmDelete ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(true)}
+                      className="w-full py-3.5 rounded-xl text-sm font-bold text-error bg-error/10 hover:bg-error/20 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                      Hapus Transaksi
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-xs text-center text-on-surface-variant">Yakin hapus? Saldo akan dikembalikan otomatis.</p>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDelete(false)}
+                          disabled={deleting}
+                          className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface-variant bg-surface-container-highest hover:bg-surface-bright transition-colors"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setDeleting(true);
+                            try {
+                              await onDelete(transaction.id);
+                              onClose();
+                            } catch (err) {
+                              console.error("Gagal hapus transaksi", err);
+                              setDeleting(false);
+                            }
+                          }}
+                          disabled={deleting}
+                          className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-primary bg-error hover:bg-error/80 transition-colors"
+                        >
+                          {deleting ? "Menghapus..." : "Ya, Hapus"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+            </>
           )}
         </div>
       </section>

@@ -168,3 +168,43 @@ export async function getTransactionsByAccountId(accountId) {
   const transactions = await getAllTransactionsDesc();
   return transactions.filter((item) => item.accountId === accountId.trim());
 }
+
+export async function updateTransaction(transactionId, payload) {
+  if (typeof transactionId !== "string" || transactionId.trim().length === 0) {
+    throw new Error("ID transaksi tidak valid.");
+  }
+
+  const userId = getActiveUserId();
+  const transactionRef = doc(getTransactionsCollection(userId), transactionId);
+  
+  // Validation similar to add
+  if (payload.amount !== undefined) {
+    const normalizedAmount = Number(payload.amount);
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount <= 0) {
+      throw new Error("Nominal transaksi harus lebih besar dari nol.");
+    }
+    payload.amount = Math.round(normalizedAmount);
+  }
+
+  if (payload.accountId) {
+    const selectedAccount = await getAccountById(payload.accountId);
+    if (!selectedAccount) {
+      throw new Error("Akun yang dipilih tidak ditemukan.");
+    }
+    payload.accountLabel =
+      typeof payload.accountLabel === "string" && payload.accountLabel.trim().length > 0
+        ? payload.accountLabel.trim()
+        : selectedAccount.name;
+  }
+
+  if (payload.date) {
+    const parsedDate = new Date(payload.date);
+    if (Number.isNaN(parsedDate.getTime())) {
+      throw new Error("Tanggal transaksi tidak valid.");
+    }
+    payload.date = parsedDate.toISOString();
+  }
+
+  await setDoc(transactionRef, payload, { merge: true });
+  return payload;
+}
