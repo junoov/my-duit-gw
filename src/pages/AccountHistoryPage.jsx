@@ -8,12 +8,12 @@ import { formatRupiah } from "../utils/currency";
 function AccountHistoryPage() {
   const { accountId } = useParams();
   const navigate = useNavigate();
-  const { accounts, loading: accountsLoading } = useAccounts();
+  const { summary: accountSummary, loading: accountsLoading } = useAccounts();
   const { transactions, loading: transactionsLoading } = useTransactions();
 
   const account = useMemo(
-    () => accounts.find((item) => item.id === accountId) || null,
-    [accounts, accountId]
+    () => accountSummary.accounts.find((item) => item.id === accountId) || null,
+    [accountSummary.accounts, accountId]
   );
 
   const accountTransactions = useMemo(() => {
