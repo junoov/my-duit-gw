@@ -55,6 +55,7 @@ export async function addAccount(payload) {
     id: createAccountId(name),
     name,
     type,
+    initialBalance: 0,
     sortOrder: currentCount + 1,
     createdAt: timestamp,
     updatedAt: timestamp
@@ -110,6 +111,27 @@ export async function renameAccount(accountId, name) {
   });
 }
 
+export async function updateAccountBalance(accountId, newBalance) {
+  if (typeof accountId !== "string" || accountId.trim().length === 0) {
+    throw new Error("ID rekening tidak valid.");
+  }
+
+  const normalizedBalance = Number(newBalance);
+  if (!Number.isFinite(normalizedBalance) || normalizedBalance < 0) {
+    throw new Error("Saldo harus angka positif atau nol.");
+  }
+
+  const current = await db.accounts.get(accountId);
+  if (!current) {
+    throw new Error("Rekening tidak ditemukan.");
+  }
+
+  await db.accounts.update(accountId, {
+    initialBalance: Math.round(normalizedBalance),
+    updatedAt: new Date().toISOString()
+  });
+}
+
 export function resolveTransactionAccountLabel(transaction, accountMap = new Map()) {
   if (transaction?.accountId && accountMap.has(transaction.accountId)) {
     return accountMap.get(transaction.accountId).name;
@@ -130,6 +152,7 @@ export async function getAccountExpenseSummary() {
       account.id,
       {
         ...account,
+        initialBalance: account.initialBalance || 0,
         expenseTotal: 0,
         incomeTotal: 0,
         transactionCount: 0
@@ -162,11 +185,14 @@ export async function getAccountExpenseSummary() {
     accountSummary.transactionCount += 1;
   });
 
+  const accountValues = Array.from(summaryMap.values());
+
   return {
-    accounts: Array.from(summaryMap.values()),
+    accounts: accountValues,
     totals: {
-      expense: Array.from(summaryMap.values()).reduce((sum, item) => sum + item.expenseTotal, 0),
-      income: Array.from(summaryMap.values()).reduce((sum, item) => sum + item.incomeTotal, 0),
+      expense: accountValues.reduce((sum, item) => sum + item.expenseTotal, 0),
+      income: accountValues.reduce((sum, item) => sum + item.incomeTotal, 0),
+      initialBalance: accountValues.reduce((sum, item) => sum + (item.initialBalance || 0), 0),
       uncategorizedExpense: uncategorizedExpenseTotal,
       uncategorizedIncome: uncategorizedIncomeTotal,
       accountCount: accounts.length

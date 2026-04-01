@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccounts } from "../hooks/useAccounts";
-import { addAccount, removeAccount, renameAccount } from "../services/accountService";
-import { formatRupiah } from "../utils/currency";
+import { addAccount, removeAccount, renameAccount, updateAccountBalance } from "../services/accountService";
+import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
 
 const accountTypeOptions = [
   { id: "cash", label: "Tunai" },
@@ -18,11 +18,12 @@ function BooksPage() {
   const [typeInput, setTypeInput] = useState("cash");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingName, setEditingName] = useState("");
+  const [editingBalance, setEditingBalance] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
   const totals = summary.totals;
-  const netBalance = totals.income - totals.expense;
+  const netBalance = (totals.initialBalance || 0) + totals.income - totals.expense;
 
   const sortedAccounts = useMemo(() => {
     return [...summary.accounts].sort((a, b) => {
@@ -55,6 +56,7 @@ function BooksPage() {
   const startEditing = (account) => {
     setEditingAccountId(account.id);
     setEditingName(account.name);
+    setEditingBalance(account.initialBalance || 0);
     setMessage("");
   };
 
@@ -67,11 +69,13 @@ function BooksPage() {
     setMessage("");
     try {
       await renameAccount(editingAccountId, editingName);
+      await updateAccountBalance(editingAccountId, editingBalance);
       setEditingAccountId("");
       setEditingName("");
-      setMessage("Nama rekening berhasil diperbarui.");
+      setEditingBalance(0);
+      setMessage("Rekening berhasil diperbarui.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Gagal mengubah nama rekening.");
+      setMessage(error instanceof Error ? error.message : "Gagal mengubah rekening.");
     } finally {
       setSubmitting(false);
     }
@@ -183,7 +187,8 @@ function BooksPage() {
         
         <div className="grid gap-4">
           {sortedAccounts.map((account, index) => {
-            const balance = account.incomeTotal - account.expenseTotal;
+            const initialBal = account.initialBalance || 0;
+            const balance = initialBal + account.incomeTotal - account.expenseTotal;
             const icon = account.type === 'cash' ? 'payments' : account.type === 'ewallet' ? 'account_balance_wallet' : 'account_balance';
             
             // Generate some coloring variation based on index as per design (primary, secondary, tertiary)
@@ -197,14 +202,29 @@ function BooksPage() {
                   </div>
                   
                   {editingAccountId === account.id ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-2">
                       <input
                         type="text"
                         value={editingName}
                         onChange={(event) => setEditingName(event.target.value)}
                         className="bg-surface-container-highest border-none rounded-lg px-3 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full sm:w-auto"
+                        placeholder="Nama rekening"
                         autoFocus
                       />
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-on-surface-variant font-bold">Saldo:</span>
+                        <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                          <span className="text-xs font-bold text-on-surface-variant">Rp</span>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={formatRupiahInput(editingBalance)}
+                            onChange={(event) => setEditingBalance(parseRupiahInput(event.target.value))}
+                            className="bg-transparent border-none text-on-surface text-sm font-bold w-24 outline-none px-1"
+                            placeholder="0"
+                          />
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div>
