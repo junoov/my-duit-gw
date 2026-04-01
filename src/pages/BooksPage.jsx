@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAccounts } from "../hooks/useAccounts";
-import { addAccount, removeAccount, renameAccount, updateAccountBalance } from "../services/accountService";
+import { addAccount, removeAccount, renameAccount } from "../services/accountService";
+import { addTransaction } from "../services/transactionService";
 import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
 
 const accountTypeOptions = [
@@ -18,12 +19,12 @@ function BooksPage() {
   const [typeInput, setTypeInput] = useState("cash");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingName, setEditingName] = useState("");
-  const [editingBalance, setEditingBalance] = useState(0);
+  const [incomeAmount, setIncomeAmount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
 
   const totals = summary.totals;
-  const netBalance = (totals.initialBalance || 0) + totals.income - totals.expense;
+  const netBalance = totals.income - totals.expense;
 
   const sortedAccounts = useMemo(() => {
     return [...summary.accounts].sort((a, b) => {
@@ -56,7 +57,7 @@ function BooksPage() {
   const startEditing = (account) => {
     setEditingAccountId(account.id);
     setEditingName(account.name);
-    setEditingBalance(account.initialBalance || 0);
+    setIncomeAmount(0);
     setMessage("");
   };
 
@@ -69,11 +70,30 @@ function BooksPage() {
     setMessage("");
     try {
       await renameAccount(editingAccountId, editingName);
-      await updateAccountBalance(editingAccountId, editingBalance);
+
+      // Jika user mengisi pemasukan, buat transaksi income
+      if (incomeAmount > 0) {
+        const account = summary.accounts.find(a => a.id === editingAccountId);
+        await addTransaction({
+          type: "income",
+          amount: incomeAmount,
+          category: "pemasukan",
+          description: "Saldo awal / pemasukan manual",
+          date: new Date().toISOString(),
+          accountId: editingAccountId,
+          accountLabel: account?.name || editingName,
+          inputMethod: "manual"
+        });
+      }
+
       setEditingAccountId("");
       setEditingName("");
-      setEditingBalance(0);
-      setMessage("Rekening berhasil diperbarui.");
+      setIncomeAmount(0);
+      setMessage(
+        incomeAmount > 0
+          ? `Rekening diperbarui & pemasukan ${formatRupiah(incomeAmount)} ditambahkan.`
+          : "Nama rekening berhasil diperbarui."
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Gagal mengubah rekening.");
     } finally {
@@ -187,8 +207,7 @@ function BooksPage() {
         
         <div className="grid gap-4">
           {sortedAccounts.map((account, index) => {
-            const initialBal = account.initialBalance || 0;
-            const balance = initialBal + account.incomeTotal - account.expenseTotal;
+            const balance = account.incomeTotal - account.expenseTotal;
             const icon = account.type === 'cash' ? 'payments' : account.type === 'ewallet' ? 'account_balance_wallet' : 'account_balance';
             
             // Generate some coloring variation based on index as per design (primary, secondary, tertiary)
@@ -212,16 +231,16 @@ function BooksPage() {
                         autoFocus
                       />
                       <div className="flex items-center gap-1">
-                        <span className="text-xs text-on-surface-variant font-bold">Saldo:</span>
+                        <span className="text-[10px] text-primary font-bold uppercase tracking-wider">+ Pemasukan:</span>
                         <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
-                          <span className="text-xs font-bold text-on-surface-variant">Rp</span>
+                          <span className="text-xs font-bold text-primary">Rp</span>
                           <input
                             type="text"
                             inputMode="numeric"
-                            value={formatRupiahInput(editingBalance)}
-                            onChange={(event) => setEditingBalance(parseRupiahInput(event.target.value))}
-                            className="bg-transparent border-none text-on-surface text-sm font-bold w-24 outline-none px-1"
-                            placeholder="0"
+                            value={formatRupiahInput(incomeAmount)}
+                            onChange={(event) => setIncomeAmount(parseRupiahInput(event.target.value))}
+                            className="bg-transparent border-none text-primary text-sm font-bold w-24 outline-none px-1"
+                            placeholder="0 (opsional)"
                           />
                         </div>
                       </div>
