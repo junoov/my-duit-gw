@@ -113,6 +113,20 @@ export async function getAllTransactionsDesc() {
   return db.transactions.orderBy("date").reverse().toArray();
 }
 
+export async function deleteTransaction(transactionId) {
+  if (typeof transactionId !== "string" || transactionId.trim().length === 0) {
+    throw new Error("ID transaksi tidak valid.");
+  }
+
+  const existing = await db.transactions.get(transactionId);
+  if (!existing) {
+    throw new Error("Transaksi tidak ditemukan.");
+  }
+
+  await db.transactions.delete(transactionId);
+  return existing;
+}
+
 export async function getTransactionsByAccountId(accountId) {
   if (typeof accountId !== "string" || accountId.trim().length === 0) {
     return [];

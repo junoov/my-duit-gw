@@ -1,12 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { resolveTransactionAccountLabel } from "../services/accountService";
 import { formatRupiah } from "../utils/currency";
 import { formatTransactionDateTime } from "../utils/date";
 import { useCategories } from "../hooks/useCategories";
 
-function TransactionDetailModal({ transaction, accountMap, onClose }) {
+function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) {
   const { getCategoryMeta } = useCategories();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (transaction) {
@@ -14,6 +16,8 @@ function TransactionDetailModal({ transaction, accountMap, onClose }) {
     }
     return () => {
       document.body.style.overflow = "";
+      setConfirmDelete(false);
+      setDeleting(false);
     };
   }, [transaction]);
 
@@ -96,6 +100,52 @@ function TransactionDetailModal({ transaction, accountMap, onClose }) {
                 ))}
               </div>
             </section>
+          )}
+
+          {onDelete && (
+            <div className="pt-2">
+              {!confirmDelete ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(true)}
+                  className="w-full py-3.5 rounded-xl text-sm font-bold text-error bg-error/10 hover:bg-error/20 transition-colors flex items-center justify-center gap-2"
+                >
+                  <span className="material-symbols-outlined text-lg">delete</span>
+                  Hapus Transaksi
+                </button>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-center text-on-surface-variant">Yakin hapus? Saldo akan dikembalikan otomatis.</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={deleting}
+                      className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface-variant bg-surface-container-highest hover:bg-surface-bright transition-colors"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setDeleting(true);
+                        try {
+                          await onDelete(transaction.id);
+                          onClose();
+                        } catch (err) {
+                          console.error("Gagal hapus transaksi", err);
+                          setDeleting(false);
+                        }
+                      }}
+                      disabled={deleting}
+                      className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-primary bg-error hover:bg-error/80 transition-colors"
+                    >
+                      {deleting ? "Menghapus..." : "Ya, Hapus"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </section>

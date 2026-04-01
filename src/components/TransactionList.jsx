@@ -32,15 +32,31 @@ function TransactionList({ transactions, accountMap, onSelectTransaction }) {
   }, [transactions, visibleCount]);
 
   const groupedTransactions = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
     return visibleTransactions.reduce((acc, tx) => {
-      const dateStr = new Date(tx.date).toLocaleDateString("id-ID", {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric"
-      });
-      if (!acc[dateStr]) acc[dateStr] = [];
-      acc[dateStr].push(tx);
+      const txDate = new Date(tx.date);
+      txDate.setHours(0, 0, 0, 0);
+
+      let dateLabel;
+      if (txDate.getTime() === today.getTime()) {
+        dateLabel = "Hari Ini";
+      } else if (txDate.getTime() === yesterday.getTime()) {
+        dateLabel = "Kemarin";
+      } else {
+        dateLabel = new Date(tx.date).toLocaleDateString("id-ID", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        });
+      }
+
+      if (!acc[dateLabel]) acc[dateLabel] = [];
+      acc[dateLabel].push(tx);
       return acc;
     }, {});
   }, [visibleTransactions]);

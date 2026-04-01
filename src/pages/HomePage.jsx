@@ -4,6 +4,7 @@ import TransactionDetailModal from "../components/TransactionDetailModal";
 import TransactionList from "../components/TransactionList";
 import { useAccounts } from "../hooks/useAccounts";
 import { useTransactions } from "../hooks/useTransactions";
+import { deleteTransaction } from "../services/transactionService";
 import { resolveTransactionAccountLabel } from "../services/accountService";
 import { formatRupiah } from "../utils/currency";
 import { parseVoiceTransactionCommand } from "../utils/voiceCommandParser";
@@ -18,7 +19,7 @@ function HomePage() {
 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState("Tahan ikon 🎤 saat bicara.");
+  const [voiceStatus, setVoiceStatus] = useState("Ketuk ikon 🎤 untuk bicara.");
   const [voiceTranscript, setVoiceTranscript] = useState("");
   const [selectedTransaction, setSelectedTransaction] = useState(null);
 
@@ -44,7 +45,7 @@ function HomePage() {
 
     const recognition = new SpeechRecognitionClass();
     recognition.lang = "id-ID";
-    recognition.continuous = false; // Only listen for one duration (push-to-talk)
+    recognition.continuous = false; // Only listen for one duration (tap-to-talk)
     recognition.interimResults = true;
     recognition.maxAlternatives = 1;
 
@@ -57,7 +58,7 @@ function HomePage() {
       setVoiceListening(false);
       setVoiceStatus((prev) => 
         (prev === "Mendengarkan... Silakan bicara." || prev === "Menyalakan mikrofon...")
-          ? "Tahan ikon 🎤 saat bicara." 
+          ? "Ketuk ikon 🎤 untuk bicara." 
           : prev
       );
     };
@@ -143,62 +144,7 @@ function HomePage() {
     };
   }, [navigate]);
 
-  const ensureMicrophonePermission = async () => {
-    if (typeof window === "undefined") {
-      return { ok: false, message: "Mode voice hanya tersedia di browser." };
-    }
-
-    const isSecureHost =
-      window.location.protocol === "https:" ||
-      window.location.hostname === "localhost" ||
-      window.location.hostname === "127.0.0.1";
-
-    if (!isSecureHost) {
-      return {
-        ok: false,
-        message: "Di HP, akses mikrofon butuh HTTPS. URL LAN HTTP diblok browser."
-      };
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      return {
-        ok: false,
-        message: "Browser tidak mendukung akses mikrofon (getUserMedia)."
-      };
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
-      return { ok: true, message: "" };
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.name === "NotAllowedError" || error.name === "PermissionDeniedError") {
-          return {
-            ok: false,
-            message: "Izin mikrofon ditolak. Aktifkan di setting situs Chrome lalu coba lagi."
-          };
-        }
-
-        if (error.name === "NotFoundError" || error.name === "DevicesNotFoundError") {
-          return {
-            ok: false,
-            message: "Mikrofon tidak ditemukan di perangkat ini."
-          };
-        }
-      }
-
-      return {
-        ok: false,
-        message: "Gagal mengakses mikrofon. Coba refresh halaman lalu ulangi."
-      };
-    }
-  };
-
-  const isHoldingRef = useRef(false);
-
-  const handleStartVoice = async (e) => {
-    // Prevent default touch interactions (like scrolling) while holding
+  const handleToggleVoice = (e) => {
     if (e && e.cancelable) e.preventDefault();
     
     if (!voiceSupported || !recognitionRef.current) {
@@ -206,50 +152,29 @@ function HomePage() {
       return;
     }
 
-    if (voiceListening || isHoldingRef.current) {
+    if (voiceListening) {
+      // If currently listening, stop it
+      try {
+        recognitionRef.current.stop();
+      } catch (err) {
+        console.warn("Gagal stop voice recognition", err);
+      }
       return;
     }
 
-    isHoldingRef.current = true;
+    // Start listening
     setVoiceTranscript("");
     setVoiceStatus("Menyalakan mikrofon...");
-
-    const permission = await ensureMicrophonePermission();
-    if (!permission.ok) {
-      isHoldingRef.current = false;
-      setVoiceStatus(permission.message);
-      return;
-    }
-
-    // Checking if user released the button while we were getting permission
-    if (!isHoldingRef.current) {
-      setVoiceStatus("Tahan ikon 🎤 saat bicara.");
-      return;
-    }
 
     try {
       recognitionRef.current.start();
     } catch (startError) {
-      isHoldingRef.current = false;
       if (startError instanceof Error && startError.name === "InvalidStateError") {
         setVoiceStatus("Mikrofon sedang inisialisasi. Tunggu sebentar lalu coba lagi.");
         return;
       }
       setVoiceStatus("Mikrofon gagal dinyalakan. Pastikan tidak dipakai aplikasi lain.");
       console.warn("Gagal start voice recognition", startError);
-    }
-  };
-
-  const handleStopVoice = (e) => {
-    if (e && e.cancelable) e.preventDefault();
-    isHoldingRef.current = false;
-    
-    if (recognitionRef.current) {
-      try {
-        recognitionRef.current.stop();
-      } catch (err) {
-        console.warn("Gagal stop voice recognition", err);
-      }
     }
   };
 
@@ -284,11 +209,8 @@ function HomePage() {
           <p className="text-sm text-on-surface-variant line-clamp-1 break-words max-w-[200px] sm:max-w-xs">{voiceTranscript ? `"${voiceTranscript}"` : voiceStatus}</p>
         </div>
         <button 
-          onPointerDown={handleStartVoice}
-          onPointerUp={handleStopVoice}
-          onPointerLeave={handleStopVoice}
-          onContextMenu={(e) => e.preventDefault()}
-          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 touch-none select-none outline-none ${voiceListening ? 'bg-error text-on-error shadow-[0_0_20px_rgba(255,180,171,0.3)] animate-pulse scale-90' : 'bg-primary text-on-primary shadow-[0_0_20px_rgba(78,222,163,0.3)] hover:scale-105 active:scale-95 cursor-pointer'}`}
+          onClick={handleToggleVoice}
+          className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 select-none outline-none ${voiceListening ? 'bg-error text-on-error shadow-[0_0_20px_rgba(255,180,171,0.3)] animate-pulse scale-90' : 'bg-primary text-on-primary shadow-[0_0_20px_rgba(78,222,163,0.3)] hover:scale-105 active:scale-95 cursor-pointer'}`}
         >
           <span className="material-symbols-outlined text-3xl" style={{fontVariationSettings: "'FILL' 1"}}>mic</span>
         </button>
@@ -333,6 +255,7 @@ function HomePage() {
         transaction={selectedTransaction}
         accountMap={accountMap}
         onClose={() => setSelectedTransaction(null)}
+        onDelete={deleteTransaction}
       />
     </>
   );
