@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "../context/ToastContext";
 import { useAccounts } from "../hooks/useAccounts";
-import { addAccount, removeAccount, renameAccount, updateIncomeAdjustment } from "../services/accountService";
+import { addAccount, removeAccount, updateAccountMeta, updateAccountStats } from "../services/accountService";
 import { formatRupiah, formatRupiahInput, parseRupiahInput } from "../utils/currency";
 
 const accountTypeOptions = [
@@ -19,7 +19,9 @@ function BooksPage() {
   const [typeInput, setTypeInput] = useState("cash");
   const [editingAccountId, setEditingAccountId] = useState("");
   const [editingName, setEditingName] = useState("");
-  const [editingBalance, setEditingBalance] = useState(0);
+  const [editingType, setEditingType] = useState("");
+  const [editingIncome, setEditingIncome] = useState(0);
+  const [editingExpense, setEditingExpense] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
 
@@ -59,7 +61,9 @@ function BooksPage() {
   const startEditing = (account) => {
     setEditingAccountId(account.id);
     setEditingName(account.name);
-    setEditingBalance((account.incomeTotal || 0) - (account.expenseTotal || 0));
+    setEditingType(account.type || "cash");
+    setEditingIncome(account.incomeTotal || 0);
+    setEditingExpense(account.expenseTotal || 0);
   };
 
   const saveRename = async () => {
@@ -69,21 +73,30 @@ function BooksPage() {
 
     setSubmitting(true);
     try {
-      await renameAccount(editingAccountId, editingName);
+      await updateAccountMeta(editingAccountId, editingName, editingType);
 
-      // Simpan selisih balance langsung di data rekening (tanpa buat history)
       const currentAccount = summary.accounts.find(a => a.id === editingAccountId);
-      const oldBalance = (currentAccount?.incomeTotal || 0) - (currentAccount?.expenseTotal || 0);
+      const oldIncome = currentAccount?.incomeTotal || 0;
+      const oldExpense = currentAccount?.expenseTotal || 0;
 
-      if (editingBalance !== oldBalance) {
-        const desiredIncome = editingBalance + (currentAccount?.expenseTotal || 0);
+      if (editingIncome !== oldIncome || editingExpense !== oldExpense) {
         const currentTransactionIncome = (currentAccount?.incomeTotal || 0) - (currentAccount?.incomeAdjustment || 0);
-        await updateIncomeAdjustment(editingAccountId, desiredIncome, currentTransactionIncome);
+        const currentTransactionExpense = (currentAccount?.expenseTotal || 0) - (currentAccount?.expenseAdjustment || 0);
+        
+        await updateAccountStats(
+          editingAccountId, 
+          editingIncome, 
+          currentTransactionIncome, 
+          editingExpense, 
+          currentTransactionExpense
+        );
       }
 
       setEditingAccountId("");
       setEditingName("");
-      setEditingBalance(0);
+      setEditingType("");
+      setEditingIncome(0);
+      setEditingExpense(0);
       showToast({ message: "Rekening berhasil diperbarui." });
     } catch (error) {
       showToast({
@@ -221,10 +234,17 @@ function BooksPage() {
                         type="text"
                         value={editingName}
                         onChange={(event) => setEditingName(event.target.value)}
-                        className="bg-surface-container-highest border-none rounded-lg px-3 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full sm:w-auto"
+                        className="bg-surface-container-highest border-none rounded-lg px-3 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full sm:w-auto mb-2 block"
                         placeholder="Nama rekening"
                         autoFocus
                       />
+                      <select
+                        value={editingType}
+                        onChange={(event) => setEditingType(event.target.value)}
+                        className="bg-surface-container-highest border-none rounded-lg px-2 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full text-[10px] tracking-widest uppercase font-medium outline-none"
+                      >
+                       {accountTypeOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                      </select>
                     </div>
                   ) : (
                     <div>
@@ -245,9 +265,9 @@ function BooksPage() {
                         <input
                           type="text"
                           inputMode="numeric"
-                          value={formatRupiahInput(editingBalance)}
-                          onChange={(event) => setEditingBalance(parseRupiahInput(event.target.value))}
-                          className="bg-transparent border-none text-primary text-sm font-bold w-28 outline-none px-1"
+                          value={formatRupiahInput(editingIncome - editingExpense)}
+                          onChange={(event) => setEditingIncome(parseRupiahInput(event.target.value) + editingExpense)}
+                          className="bg-transparent border-none text-primary text-sm font-bold max-w-[80px] sm:max-w-[100px] outline-none px-1"
                         />
                       </div>
                     </div>
@@ -258,15 +278,47 @@ function BooksPage() {
                     </div>
                   )}
                   
-                  <div className="hidden sm:block">
-                    <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
-                    <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
-                  </div>
-                  
-                  <div className="hidden sm:block">
-                    <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
-                    <span className="font-bold text-tertiary text-sm">- {formatRupiah(account.expenseTotal)}</span>
-                  </div>
+                  {editingAccountId === account.id ? (
+                    <div>
+                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                        <span className="text-xs font-bold text-primary">+</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatRupiahInput(editingIncome)}
+                          onChange={(event) => setEditingIncome(parseRupiahInput(event.target.value))}
+                          className="bg-transparent border-none text-primary text-sm font-bold max-w-[80px] sm:max-w-[100px] outline-none px-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:block">
+                      <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
+                      <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
+                    </div>
+                  )}
+
+                  {editingAccountId === account.id ? (
+                    <div>
+                      <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
+                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                        <span className="text-xs font-bold text-tertiary">-</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatRupiahInput(editingExpense)}
+                          onChange={(event) => setEditingExpense(parseRupiahInput(event.target.value))}
+                          className="bg-transparent border-none text-tertiary text-sm font-bold max-w-[80px] sm:max-w-[100px] outline-none px-1"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="hidden sm:block">
+                      <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
+                      <span className="font-bold text-tertiary text-sm">- {formatRupiah(account.expenseTotal)}</span>
+                    </div>
+                  )}
                   
                   <div className="flex items-center gap-2 ml-auto">
                     {editingAccountId === account.id ? (

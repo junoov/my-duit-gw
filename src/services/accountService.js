@@ -59,6 +59,7 @@ export async function getAllAccounts() {
     ...account,
     initialBalance: account.initialBalance || 0,
     incomeAdjustment: account.incomeAdjustment || 0,
+    expenseAdjustment: account.expenseAdjustment || 0,
     userId
   }));
 
@@ -116,6 +117,7 @@ export async function addAccount(payload) {
     type,
     initialBalance: 0,
     incomeAdjustment: 0,
+    expenseAdjustment: 0,
     sortOrder: currentCount + 1,
     userId,
     createdAt: timestamp,
@@ -153,7 +155,7 @@ export async function removeAccount(accountId) {
   await deleteDoc(accountRef);
 }
 
-export async function renameAccount(accountId, name) {
+export async function updateAccountMeta(accountId, name, type) {
   if (typeof accountId !== "string" || accountId.trim().length === 0) {
     throw new Error("ID rekening tidak valid.");
   }
@@ -162,6 +164,9 @@ export async function renameAccount(accountId, name) {
   if (normalizedName.length < 2) {
     throw new Error("Nama rekening minimal 2 karakter.");
   }
+  
+  const validTypes = new Set(["cash", "bank", "ewallet", "other"]);
+  const normalizedType = validTypes.has(type) ? type : "cash";
 
   const userId = getActiveUserId();
   const accountRef = doc(db, "users", userId, "accounts", accountId);
@@ -181,11 +186,12 @@ export async function renameAccount(accountId, name) {
 
   await updateDoc(accountRef, {
     name: normalizedName,
+    type: normalizedType,
     updatedAt: new Date().toISOString()
   });
 }
 
-export async function updateIncomeAdjustment(accountId, desiredIncome, currentTransactionIncome) {
+export async function updateAccountStats(accountId, desiredIncome, currentTransactionIncome, desiredExpense, currentTransactionExpense) {
   if (typeof accountId !== "string" || accountId.trim().length === 0) {
     throw new Error("ID rekening tidak valid.");
   }
@@ -198,10 +204,12 @@ export async function updateIncomeAdjustment(accountId, desiredIncome, currentTr
     throw new Error("Rekening tidak ditemukan.");
   }
 
-  const adjustment = Math.round(Number(desiredIncome) - Number(currentTransactionIncome));
+  const incAdj = Math.round(Number(desiredIncome) - Number(currentTransactionIncome));
+  const expAdj = Math.round(Number(desiredExpense) - Number(currentTransactionExpense));
 
   await updateDoc(accountRef, {
-    incomeAdjustment: adjustment,
+    incomeAdjustment: incAdj,
+    expenseAdjustment: expAdj,
     updatedAt: new Date().toISOString()
   });
 }
@@ -233,7 +241,8 @@ export async function getAccountExpenseSummary() {
       {
         ...account,
         incomeAdjustment: account.incomeAdjustment || 0,
-        expenseTotal: 0,
+        expenseAdjustment: account.expenseAdjustment || 0,
+        expenseTotal: account.expenseAdjustment || 0,
         incomeTotal: account.incomeAdjustment || 0,
         transactionCount: 0
       }
