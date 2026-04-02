@@ -17,6 +17,7 @@ service cloud.firestore {
           'sortOrder',
           'initialBalance',
           'incomeAdjustment',
+          'expenseAdjustment',
           'userId',
           'createdAt',
           'updatedAt'
@@ -31,6 +32,7 @@ service cloud.firestore {
         && request.resource.data.sortOrder > 0
         && request.resource.data.initialBalance is int
         && request.resource.data.incomeAdjustment is int
+        && (!('expenseAdjustment' in request.resource.data) || request.resource.data.expenseAdjustment is int)
         && request.resource.data.createdAt is string
         && request.resource.data.updatedAt is string;
     }
