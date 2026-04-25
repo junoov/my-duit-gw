@@ -4,7 +4,7 @@ import { db } from "../services/firebaseClient";
 import { useAuth } from "../context/AuthContext";
 import { toLocalDateKey } from "../utils/date";
 
-function computeSummary(transactions, accounts) {
+export function computeSummary(transactions, accounts) {
   const today = toLocalDateKey(new Date());
 
   let income = 0;
@@ -16,7 +16,7 @@ function computeSummary(transactions, accounts) {
   transactions.forEach((tx) => {
     if (tx.type === "income") {
       income += tx.amount;
-    } else {
+    } else if (tx.type === "expense") {
       expense += tx.amount;
     }
 

@@ -34,12 +34,12 @@ function AppShell({ children }) {
 
   return (
     <div className="bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary min-h-screen">
-      <header className={`w-full top-0 sticky z-50 shadow-none ${isHome ? 'bg-[#131b2e]' : 'bg-[#0b1326]'}`}>
-        <div className={`flex items-center px-6 py-4 w-full mx-auto max-w-xl ${isHome ? "justify-between" : "justify-center"}`}>
+      <header className="w-full top-0 sticky z-50 bg-background/82 backdrop-blur-xl border-b border-outline-variant/10">
+        <div className={`flex items-center px-4 sm:px-6 py-3.5 w-full mx-auto max-w-2xl ${isHome ? "justify-between" : "justify-center"}`}>
           {isHome ? (
             <>
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-surface-container-high flex items-center justify-center ring-1 ring-primary/20">
                   <img
                     alt="User Profile"
                     className="w-full h-full object-cover"
@@ -54,11 +54,19 @@ function AppShell({ children }) {
                     }}
                   />
                 </div>
-                <span className="text-xl font-black text-[#4edea3] tracking-tighter font-headline">{profileName}</span>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-widest text-on-surface-variant">My Duitku</p>
+                  <span className="block max-w-[190px] truncate text-lg font-black text-primary tracking-tight font-headline">{profileName}</span>
+                </div>
               </div>
-              <button className="w-10 h-10 flex items-center justify-center text-[#b9c8de] hover:bg-[#222a3d] transition-colors active:scale-95 duration-200 rounded-full">
-                <span className="material-symbols-outlined">notifications</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <span className={`hidden min-[360px]:inline-flex rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-widest ${isOnline ? "bg-primary/10 text-primary" : "bg-tertiary/10 text-tertiary"}`}>
+                  {isOnline ? "Online" : "Offline"}
+                </span>
+                <button className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container-high transition-colors active:scale-95 duration-200 rounded-full" aria-label="Notifikasi">
+                  <span className="material-symbols-outlined">notifications</span>
+                </button>
+              </div>
             </>
           ) : (
             <>
@@ -67,15 +75,15 @@ function AppShell({ children }) {
           )}
         </div>
         {!isOnline ? (
-          <div className="px-6 pb-3">
-            <p className="max-w-xl mx-auto text-xs font-semibold bg-tertiary/15 text-tertiary rounded-full px-4 py-2 text-center">
+          <div className="px-4 sm:px-6 pb-3">
+            <p className="max-w-2xl mx-auto text-xs font-semibold bg-tertiary/15 text-tertiary rounded-full px-4 py-2 text-center">
               Mode offline aktif. Perubahan disimpan lokal dulu dan akan sinkron otomatis saat online.
             </p>
           </div>
         ) : null}
       </header>
 
-      <main className="max-w-xl mx-auto px-6 pt-4 pb-32 space-y-8">
+      <main className="max-w-2xl mx-auto px-4 sm:px-6 pt-4 pb-32 space-y-8">
         {children}
       </main>
 

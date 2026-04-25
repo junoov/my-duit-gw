@@ -11,7 +11,7 @@ import {
 import { getAccountById } from "./accountService";
 import { auth, db, assertFirebaseReady } from "./firebaseClient";
 
-const validTypes = new Set(["expense", "income"]);
+const validTypes = new Set(["expense", "income", "transfer"]);
 const validInputMethods = new Set(["manual", "scan"]);
 
 function getActiveUserId() {
@@ -99,6 +99,20 @@ export async function addTransaction(payload) {
     throw new Error("Akun yang dipilih tidak ditemukan.");
   }
 
+  let destinationAccount = null;
+  if (payload.type === "transfer") {
+    if (typeof payload.destinationAccountId !== "string" || payload.destinationAccountId.trim().length === 0) {
+      throw new Error("Akun tujuan transfer wajib dipilih.");
+    }
+    if (payload.accountId === payload.destinationAccountId) {
+      throw new Error("Akun sumber dan tujuan tidak boleh sama.");
+    }
+    destinationAccount = await getAccountById(payload.destinationAccountId);
+    if (!destinationAccount) {
+      throw new Error("Akun tujuan tidak ditemukan.");
+    }
+  }
+
   const parsedDate = new Date(payload.date);
   if (Number.isNaN(parsedDate.getTime())) {
     throw new Error("Tanggal transaksi tidak valid.");
@@ -130,6 +144,12 @@ export async function addTransaction(payload) {
     userId,
     createdAt: new Date().toISOString()
   };
+
+  if (payload.type === "transfer") {
+    transaction.destinationAccountId = destinationAccount.id;
+    transaction.destinationAccountLabel = destinationAccount.name;
+    transaction.category = "transfer"; // force category
+  }
 
   const transactionRef = doc(getTransactionsCollection(userId), transaction.id);
   await setDoc(transactionRef, transaction);
@@ -203,6 +223,17 @@ export async function updateTransaction(transactionId, payload) {
       throw new Error("Tanggal transaksi tidak valid.");
     }
     payload.date = parsedDate.toISOString();
+  }
+
+  if (payload.type === "transfer" || (payload.type === undefined && typeof payload.destinationAccountId === "string")) {
+    if (payload.destinationAccountId) {
+      const destinationAccount = await getAccountById(payload.destinationAccountId);
+      if (!destinationAccount) {
+        throw new Error("Akun tujuan tidak ditemukan.");
+      }
+      payload.destinationAccountLabel = destinationAccount.name;
+    }
+    payload.category = "transfer";
   }
 
   await setDoc(transactionRef, payload, { merge: true });

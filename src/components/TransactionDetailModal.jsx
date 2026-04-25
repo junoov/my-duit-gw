@@ -96,7 +96,7 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
       <div className="absolute inset-0 bg-surface-container-low/80 backdrop-blur-sm transition-opacity" />
       
       <section
-        className="relative w-full max-w-lg bg-surface-container-high border border-outline-variant/30 rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-4 duration-300"
+        className="relative w-full max-w-lg wa-card rounded-t-[2rem] sm:rounded-[2rem] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in slide-in-from-bottom-8 sm:slide-in-from-bottom-4 duration-300"
         role="dialog"
         aria-modal="true"
         aria-label="Detail transaksi"
@@ -133,14 +133,14 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
             <form onSubmit={handleUpdate} className="space-y-6">
               <label className="block space-y-2">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Nominal Transaksi</span>
-                <div className={`flex items-center bg-surface-container-lowest rounded-xl px-4 overflow-hidden border-2 transition-colors focus-within:bg-white focus-within:border-primary border-transparent`}>
+                <div className="flex items-center wa-field rounded-xl px-4 overflow-hidden transition-colors">
                   <strong className={`text-xl font-bold ${transaction.type === 'expense' ? 'text-tertiary' : 'text-primary'} focus-within:text-surface-container-low`}>Rp</strong>
                   <input
                     type="text"
                     inputMode="numeric"
                     value={formattedEditAmount}
                     onChange={(e) => setEditAmount(parseRupiahInput(e.target.value))}
-                    className="w-full bg-transparent border-none py-3 px-3 text-2xl font-bold font-headline text-on-surface outline-none focus:text-surface-container-low"
+                    className="w-full bg-transparent border-none py-3 px-3 text-2xl font-bold font-headline text-on-surface outline-none"
                     required
                   />
                 </div>
@@ -152,13 +152,13 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
                   type="text"
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium"
+                  className="w-full wa-field rounded-xl px-4 py-3 text-on-surface outline-none transition-all font-medium"
                 />
               </label>
 
               <div className="space-y-2">
                 <span className="text-[10px] font-bold tracking-widest uppercase text-on-surface-variant">Kategori</span>
-                <div className="bg-surface-container-lowest rounded-xl p-2 border border-transparent focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/40 transition-all">
+                <div className="wa-field rounded-xl p-2 transition-all">
                   <CategoryPicker value={editCategory} onChange={setEditCategory} />
                 </div>
               </div>
@@ -168,7 +168,7 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
                 <select
                   value={editAccountId}
                   onChange={(e) => setEditAccountId(e.target.value)}
-                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium appearance-none"
+                  className="w-full wa-field rounded-xl px-4 py-3 text-on-surface outline-none transition-all font-medium appearance-none"
                   required
                 >
                   {accounts.map((acc) => (
@@ -183,7 +183,7 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
                   type="datetime-local"
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
-                  className="w-full bg-surface-container-lowest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium"
+                  className="w-full wa-field rounded-xl px-4 py-3 text-on-surface outline-none transition-all font-medium"
                   style={{ colorScheme: "dark" }}
                   required
                 />
@@ -194,14 +194,14 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
                   type="button"
                   onClick={toggleEdit}
                   disabled={saving}
-                  className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface bg-surface-container-highest hover:bg-surface-bright transition-colors"
+                  className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface wa-field hover:bg-surface-bright transition-colors"
                 >
                   Batal
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-primary bg-primary hover:bg-primary/90 transition-colors"
+                  className="flex-1 py-3.5 rounded-xl text-sm font-bold wa-button-primary transition-colors"
                 >
                   {saving ? "Menyimpan..." : "Simpan Perubahan"}
                 </button>
@@ -218,29 +218,29 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden group">
+                <article className="wa-field p-4 rounded-2xl relative overflow-hidden group">
                   <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Kategori</span>
                   <strong className="text-sm font-bold text-on-surface flex items-center gap-2">
                     <span className="material-symbols-outlined text-[16px] opacity-70" style={{fontVariationSettings: "'FILL' 1"}}>{category.icon}</span>
                     {category.label}
                   </strong>
                 </article>
-                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                <article className="wa-field p-4 rounded-2xl relative overflow-hidden">
                   <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Akun</span>
                   <strong className="text-sm font-bold text-on-surface">{accountLabel}</strong>
                 </article>
-                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                <article className="wa-field p-4 rounded-2xl relative overflow-hidden">
                   <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Waktu</span>
                   <strong className="text-sm font-bold text-on-surface">{formatTransactionDateTime(transaction.date)}</strong>
                 </article>
-                <article className="bg-surface-container-highest p-4 rounded-2xl relative overflow-hidden">
+                <article className="wa-field p-4 rounded-2xl relative overflow-hidden">
                   <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant block mb-1">Metode Input</span>
                   <strong className="text-sm font-bold text-on-surface">{methodLabel}</strong>
                 </article>
               </div>
 
               {Array.isArray(transaction.lineItems) && transaction.lineItems.length > 0 && (
-                <section className="bg-surface-container-lowest/50 p-5 rounded-3xl border border-outline-variant/20">
+                <section className="wa-field p-5 rounded-3xl">
                   <h4 className="text-sm font-bold tracking-tight text-on-surface mb-3 flex items-center gap-2">
                     <span className="material-symbols-outlined text-[18px]">receipt_long</span> Rincian Item
                   </h4>
@@ -277,7 +277,7 @@ function TransactionDetailModal({ transaction, accountMap, onClose, onDelete }) 
                           type="button"
                           onClick={() => setConfirmDelete(false)}
                           disabled={deleting}
-                          className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface-variant bg-surface-container-highest hover:bg-surface-bright transition-colors"
+                          className="flex-1 py-3.5 rounded-xl text-sm font-bold text-on-surface-variant wa-field hover:bg-surface-bright transition-colors"
                         >
                           Batal
                         </button>

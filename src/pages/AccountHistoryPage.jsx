@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import TransactionList from "../components/TransactionList";
+import TransactionDetailModal from "../components/TransactionDetailModal";
 import { useAccounts } from "../hooks/useAccounts";
 import { useTransactions } from "../hooks/useTransactions";
+import { deleteTransaction } from "../services/transactionService";
 import { formatRupiah } from "../utils/currency";
 
 function AccountHistoryPage() {
@@ -10,6 +12,7 @@ function AccountHistoryPage() {
   const navigate = useNavigate();
   const { summary: accountSummary, loading: accountsLoading } = useAccounts();
   const { transactions, loading: transactionsLoading } = useTransactions();
+  const [selectedTransaction, setSelectedTransaction] = useState(null);
 
   const account = useMemo(
     () => accountSummary.accounts.find((item) => item.id === accountId) || null,
@@ -55,8 +58,8 @@ function AccountHistoryPage() {
   if (!account) {
     return (
       <div className="space-y-6 flex flex-col items-center justify-center min-h-[50vh]">
-        <p className="text-center text-sm text-on-surface-variant bg-surface-container-high p-6 rounded-2xl w-full">Rekening tidak ditemukan.</p>
-        <button className="w-full bg-surface-container-highest text-on-surface font-bold py-4 rounded-full transition-colors hover:bg-surface-bright" onClick={() => navigate("/buku")}>
+        <p className="text-center text-sm text-on-surface-variant wa-card p-6 rounded-2xl w-full">Rekening tidak ditemukan.</p>
+        <button className="w-full wa-field text-on-surface font-bold py-4 rounded-full transition-colors hover:bg-surface-bright" onClick={() => navigate("/buku")}>
           Kembali ke Buku
         </button>
       </div>
@@ -68,14 +71,14 @@ function AccountHistoryPage() {
       <div className="flex items-center gap-3 mb-2">
         <button 
           onClick={() => navigate("/buku")} 
-          className="w-10 h-10 rounded-full bg-surface-container-low flex items-center justify-center text-on-surface hover:bg-surface-bright transition-colors"
+          className="w-10 h-10 rounded-full wa-field flex items-center justify-center text-on-surface hover:bg-surface-bright transition-colors"
         >
           <span className="material-symbols-outlined text-lg">arrow_back</span>
         </button>
         <h3 className="text-lg font-bold tracking-tight text-on-surface">Riwayat {account.name}</h3>
       </div>
 
-      <section className="glass-effect p-8 rounded-[1.5rem] border border-primary/10 shadow-lg relative overflow-hidden">
+      <section className="glass-effect p-6 sm:p-8 rounded-[1.5rem] relative overflow-hidden">
         <div className="relative z-10">
           <div className="flex justify-between items-start mb-2">
             <div>
@@ -111,9 +114,17 @@ function AccountHistoryPage() {
         <h3 className="text-lg font-bold tracking-tight text-on-surface">Riwayat Transaksi</h3>
         <TransactionList 
           transactions={accountTransactions} 
-          accountMap={accountMap} 
+          accountMap={accountMap}
+          onSelectTransaction={setSelectedTransaction}
         />
       </section>
+
+      <TransactionDetailModal
+        transaction={selectedTransaction}
+        accountMap={accountMap}
+        onClose={() => setSelectedTransaction(null)}
+        onDelete={deleteTransaction}
+      />
     </div>
   );
 }

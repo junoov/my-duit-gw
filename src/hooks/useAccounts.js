@@ -34,10 +34,14 @@ function computeAccountSummary(accounts, transactions) {
 
     if (transaction.type === "expense") {
       accountSummary.expenseTotal += transaction.amount;
-    }
-
-    if (transaction.type === "income") {
+    } else if (transaction.type === "income") {
       accountSummary.incomeTotal += transaction.amount;
+    } else if (transaction.type === "transfer") {
+      accountSummary.expenseTotal += transaction.amount;
+      const destSummary = summaryMap.get(transaction.destinationAccountId);
+      if (destSummary) {
+        destSummary.incomeTotal += transaction.amount;
+      }
     }
 
     accountSummary.transactionCount += 1;

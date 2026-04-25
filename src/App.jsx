@@ -1,6 +1,7 @@
 import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import AppShell from "./components/AppShell";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./context/ToastContext";
 import HomePage from "./pages/HomePage";
@@ -70,8 +71,9 @@ function App() {
   };
 
   return (
-    <AppShell>
-      <Suspense fallback={<p className="feedback-text">Memuat halaman...</p>}>
+    <ErrorBoundary>
+      <AppShell>
+        <Suspense fallback={<p className="feedback-text">Memuat halaman...</p>}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route
@@ -110,7 +112,8 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
-    </AppShell>
+      </AppShell>
+    </ErrorBoundary>
   );
 }
 

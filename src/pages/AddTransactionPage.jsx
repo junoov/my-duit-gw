@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import CategoryPicker from "../components/CategoryPicker";
 import { useToast } from "../context/ToastContext";
 import { useAccounts } from "../hooks/useAccounts";
+import { useCategories } from "../hooks/useCategories";
+import { useTransactionPreferences } from "../hooks/useTransactionPreferences";
 import { defaultCategoryId } from "../data/categories";
 import { enhanceReceiptWithAI, isAiReceiptEnabled } from "../services/aiReceiptService";
 import { addTransaction } from "../services/transactionService";
@@ -12,6 +14,16 @@ import { parseReceiptText } from "../utils/ocrParser";
 import { parseMultipleVoiceCommands } from "../utils/voiceCommandParser";
 
 const defaultDateTime = toDateTimeInputValue(new Date());
+
+function createLineItemId() {
+  const cryptoApi = typeof globalThis !== "undefined" ? globalThis.crypto : undefined;
+
+  if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+    return cryptoApi.randomUUID();
+  }
+
+  return `line-item-${Date.now()}-${Math.round(Math.random() * 1000000)}`;
+}
 
 function normalizeEditableLineItems(items) {
   if (!Array.isArray(items)) {
@@ -25,6 +37,7 @@ function normalizeEditableLineItems(items) {
       const amount = Number(item?.amount);
 
       return {
+        id: typeof item?.id === "string" && item.id.trim().length > 0 ? item.id.trim() : createLineItemId(),
         name,
         quantity: Number.isFinite(quantity) && quantity > 0 ? Math.round(quantity) : 1,
         amount: Number.isFinite(amount) && amount > 0 ? Math.round(amount) : 0
@@ -34,15 +47,49 @@ function normalizeEditableLineItems(items) {
 }
 
 function createEmptyLineItem() {
-  return { name: "", quantity: 1, amount: 0 };
+  return { id: createLineItemId(), name: "", quantity: 1, amount: 0 };
+}
+
+function resolveValidAccountId(accounts, candidateId, fallbackId = "") {
+  if (candidateId && accounts.some((account) => account.id === candidateId)) {
+    return candidateId;
+  }
+
+  if (fallbackId && accounts.some((account) => account.id === fallbackId)) {
+    return fallbackId;
+  }
+
+  return accounts[0]?.id || "";
+}
+
+function resolveValidCategoryId(allCategories, candidateId, fallbackId = defaultCategoryId) {
+  if (candidateId && allCategories.some((category) => category.id === candidateId)) {
+    return candidateId;
+  }
+
+  if (fallbackId && allCategories.some((category) => category.id === fallbackId)) {
+    return fallbackId;
+  }
+
+  return allCategories[0]?.id || defaultCategoryId;
 }
 
 function AddTransactionPage() {
+  const location = useLocation();
   const navigate = useNavigate();
   const aiReceiptEnabled = isAiReceiptEnabled();
   const { accounts } = useAccounts();
+  const { allCategories } = useCategories();
+  const {
+    templates,
+    defaults,
+    saveTemplate,
+    deleteTemplate,
+    markTemplateUsed,
+    rememberTransactionDefaults
+  } = useTransactionPreferences();
   const [activeTab, setActiveTab] = useState("manual");
-  const [type, setType] = useState("expense");
+  const [type, setType] = useState(defaults.lastType || "expense");
   const [manualCategory, setManualCategory] = useState(defaultCategoryId);
   const [scanCategory, setScanCategory] = useState(defaultCategoryId);
   const [amount, setAmount] = useState(0);
@@ -61,6 +108,9 @@ function AddTransactionPage() {
   const [scanLineItems, setScanLineItems] = useState([]);
   const [scanConfidence, setScanConfidence] = useState("");
   const [scanning, setScanning] = useState(false);
+  const [destinationAccountId, setDestinationAccountId] = useState("");
+  const [showTemplateComposer, setShowTemplateComposer] = useState(false);
+  const [templateName, setTemplateName] = useState("");
 
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
@@ -68,6 +118,7 @@ function AddTransactionPage() {
   const voiceRecognitionRef = useRef(null);
   const voiceTranscriptTimeoutRef = useRef(null);
   const latestVoiceTranscriptRef = useRef("");
+  const appliedPrefillRef = useRef(false);
 
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceListening, setVoiceListening] = useState(false);
@@ -76,24 +127,38 @@ function AddTransactionPage() {
 
   const formattedAmount = useMemo(() => formatRupiahInput(amount), [amount]);
   const formattedScanAmount = useMemo(() => formatRupiahInput(scanAmount), [scanAmount]);
+  const visibleTemplates = useMemo(() => templates.slice(0, 8), [templates]);
 
   useEffect(() => {
     if (accounts.length === 0) {
+      setManualAccountId("");
+      setScanAccountId("");
       return;
     }
 
     setManualAccountId((currentAccountId) =>
-      currentAccountId && accounts.some((account) => account.id === currentAccountId)
-        ? currentAccountId
-        : accounts[0].id
+      resolveValidAccountId(accounts, defaults.accountByType?.[type], currentAccountId)
     );
-
     setScanAccountId((currentAccountId) =>
-      currentAccountId && accounts.some((account) => account.id === currentAccountId)
-        ? currentAccountId
-        : accounts[0].id
+      resolveValidAccountId(accounts, defaults.scanAccountId || defaults.accountByType?.expense, currentAccountId)
     );
-  }, [accounts]);
+    setDestinationAccountId((currentAccountId) => resolveValidAccountId(accounts, currentAccountId));
+  }, [accounts, defaults.accountByType, defaults.scanAccountId, type]);
+
+  useEffect(() => {
+    if (allCategories.length === 0) {
+      setManualCategory(defaultCategoryId);
+      setScanCategory(defaultCategoryId);
+      return;
+    }
+
+    setManualCategory((currentCategoryId) =>
+      resolveValidCategoryId(allCategories, defaults.categoryByType?.[type], currentCategoryId)
+    );
+    setScanCategory((currentCategoryId) =>
+      resolveValidCategoryId(allCategories, defaults.scanCategoryId || defaults.categoryByType?.expense, currentCategoryId)
+    );
+  }, [allCategories, defaults.categoryByType, defaults.scanCategoryId, type]);
 
   const manualAccountLabel = useMemo(() => {
     return accounts.find((account) => account.id === manualAccountId)?.name || "";
@@ -102,6 +167,70 @@ function AddTransactionPage() {
   const scanAccountLabel = useMemo(() => {
     return accounts.find((account) => account.id === scanAccountId)?.name || "";
   }, [accounts, scanAccountId]);
+
+  useEffect(() => {
+    const prefill = location.state?.prefill;
+    if (appliedPrefillRef.current || !prefill || typeof prefill !== "object") {
+      return;
+    }
+
+    appliedPrefillRef.current = true;
+    setActiveTab("manual");
+    setType(prefill.type === "income" ? "income" : "expense");
+    setAmount(Number.isFinite(Number(prefill.amount)) ? Math.max(0, Math.round(Number(prefill.amount))) : 0);
+    setDescription(typeof prefill.description === "string" ? prefill.description : "");
+    setManualCategory(resolveValidCategoryId(allCategories, prefill.category, defaultCategoryId));
+    setManualAccountId(resolveValidAccountId(accounts, prefill.accountId));
+    if (typeof prefill.name === "string" && prefill.name.trim().length > 0) {
+      setTemplateName(prefill.name.trim());
+    }
+  }, [location.state, allCategories, accounts]);
+
+  const applyTemplateToManualForm = (template) => {
+    setActiveTab("manual");
+    setType(template.type === "income" ? "income" : "expense");
+    setAmount(template.amount || 0);
+    setDescription(template.description || "");
+    setManualCategory(resolveValidCategoryId(allCategories, template.category, defaultCategoryId));
+    setManualAccountId(resolveValidAccountId(accounts, template.accountId));
+    markTemplateUsed(template.id);
+    showToast({ message: `Template ${template.name} diterapkan ke form manual.` });
+  };
+
+  const handleSaveTemplate = () => {
+    if (type === "transfer") {
+      showToast({ message: "Template hanya tersedia untuk pemasukan dan pengeluaran.", type: "error" });
+      return;
+    }
+
+    if (!templateName.trim()) {
+      showToast({ message: "Nama template wajib diisi.", type: "error" });
+      return;
+    }
+
+    const savedTemplate = saveTemplate({
+      name: templateName,
+      type,
+      amount,
+      category: manualCategory,
+      accountId: manualAccountId,
+      description
+    });
+
+    if (!savedTemplate) {
+      showToast({ message: "Template gagal disimpan.", type: "error" });
+      return;
+    }
+
+    setTemplateName("");
+    setShowTemplateComposer(false);
+    showToast({ message: `Template ${savedTemplate.name} berhasil disimpan.` });
+  };
+
+  const handleDeleteTemplate = (templateId) => {
+    deleteTemplate(templateId);
+    showToast({ message: "Template berhasil dihapus." });
+  };
 
   useEffect(
     () => () => {
@@ -307,7 +436,7 @@ function AddTransactionPage() {
       }
       voiceRecognitionRef.current = null;
     };
-  }, []);
+  }, [accounts, manualAccountId, showToast]);
 
   const clearNotification = () => {};
 
@@ -337,7 +466,9 @@ function AddTransactionPage() {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach((track) => track.stop());
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
       return { ok: true, message: "" };
     } catch (error) {
       if (error instanceof Error) {
@@ -411,23 +542,47 @@ function AddTransactionPage() {
   const saveManualTransaction = async (event) => {
     event.preventDefault();
     clearNotification();
+
+    if (amount <= 0) {
+      showToast({ message: "Nominal transaksi tidak boleh nol.", type: "error" });
+      return;
+    }
+
+    if (type === "transfer") {
+      if (!destinationAccountId) {
+        showToast({ message: "Silakan pilih rekening tujuan transfer.", type: "error" });
+        return;
+      }
+      if (manualAccountId === destinationAccountId) {
+        showToast({ message: "Rekening sumber dan tujuan tidak boleh sama.", type: "error" });
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       await addTransaction({
         type,
         amount,
-        category: manualCategory,
+        category: type === "transfer" ? "transfer" : manualCategory,
         description,
-        date,
+        date: new Date(date).toISOString(),
         accountId: manualAccountId,
+        destinationAccountId: type === "transfer" ? destinationAccountId : undefined,
         accountLabel: manualAccountLabel,
+        inputMethod: "manual"
+      });
+      rememberTransactionDefaults({
+        type,
+        category: type === "transfer" ? manualCategory : manualCategory,
+        accountId: manualAccountId,
         inputMethod: "manual"
       });
       setAmount(0);
       setDescription("");
       setDate(toDateTimeInputValue(new Date()));
       showToast({
-        message: type === "income" ? "Pemasukan berhasil disimpan." : "Pengeluaran berhasil disimpan."
+        message: type === "transfer" ? "Transfer berhasil dicatat." : type === "income" ? "Pemasukan berhasil disimpan." : "Pengeluaran berhasil disimpan."
       });
     } catch (error) {
       showToast({
@@ -571,6 +726,12 @@ function AddTransactionPage() {
         receiptImageRef: null,
         lineItems: normalizedLineItems
       });
+      rememberTransactionDefaults({
+        type: "expense",
+        category: scanCategory,
+        accountId: scanAccountId,
+        inputMethod: "scan"
+      });
       setScanAmount(0);
       setScanDescription("");
       setScanLineItems([]);
@@ -592,12 +753,12 @@ function AddTransactionPage() {
   if (accounts.length === 0) {
     return (
       <div className="space-y-6">
-        <section className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-4">
+        <section className="wa-card p-6 rounded-[1.5rem] space-y-4">
           <h3 className="text-lg font-bold text-on-surface">Belum Ada Rekening</h3>
           <p className="text-sm text-on-surface-variant">
             Tambahkan minimal satu rekening dulu di menu Buku agar pemasukan/pengeluaran bisa dipilih sumber dananya.
           </p>
-          <button type="button" className="w-full bg-primary text-on-primary font-bold py-4 rounded-full mt-4" onClick={() => navigate("/buku")}>
+          <button type="button" className="w-full wa-button-primary font-bold py-4 rounded-full mt-4" onClick={() => navigate("/buku")}>
             Buka Buku Rekening
           </button>
         </section>
@@ -607,7 +768,7 @@ function AddTransactionPage() {
 
   return (
     <div className="space-y-6">
-      <section className="bg-surface-container-low rounded-3xl p-4 sm:p-6 flex items-center justify-between gap-4">
+      <section className="wa-card rounded-3xl p-4 sm:p-6 flex items-center justify-between gap-4">
         <div className="space-y-1">
           <h3 className="text-lg font-bold text-on-surface">Voice Input</h3>
           <p className="text-sm text-on-surface-variant line-clamp-2 break-words max-w-[240px] sm:max-w-md">
@@ -621,7 +782,7 @@ function AddTransactionPage() {
           className={`w-14 h-14 rounded-full flex items-center justify-center transition-all duration-200 select-none outline-none disabled:opacity-40 ${
             voiceListening
               ? "bg-error text-on-error shadow-[0_0_20px_rgba(255,180,171,0.3)] animate-pulse scale-90"
-              : "bg-primary text-on-primary shadow-[0_0_20px_rgba(78,222,163,0.3)] hover:scale-105 active:scale-95 cursor-pointer"
+              : "wa-button-primary hover:scale-105 active:scale-95 cursor-pointer"
           }`}
         >
           <span className="material-symbols-outlined text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
@@ -630,17 +791,17 @@ function AddTransactionPage() {
         </button>
       </section>
 
-      <section className="bg-surface-container-highest rounded-full flex p-1.5 gap-1 mx-auto max-w-sm">
+      <section className="bg-surface-container-highest rounded-full flex p-1.5 gap-1 mx-auto w-full max-w-sm">
         <button
           type="button"
-          className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${activeTab === "manual" ? "bg-white text-surface-container-low shadow-md" : "text-on-surface-variant hover:text-on-surface"}`}
+          className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${activeTab === "manual" ? "wa-tab-active" : "text-on-surface-variant hover:text-on-surface"}`}
           onClick={() => setActiveTab("manual")}
         >
           Input Manual
         </button>
         <button
           type="button"
-          className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${activeTab === "scan" ? "bg-white text-surface-container-low shadow-md" : "text-on-surface-variant hover:text-on-surface"}`}
+          className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${activeTab === "scan" ? "wa-tab-active" : "text-on-surface-variant hover:text-on-surface"}`}
           onClick={() => setActiveTab("scan")}
         >
           Scan Struk
@@ -648,56 +809,161 @@ function AddTransactionPage() {
       </section>
 
       {activeTab === "manual" ? (
-        <form className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-6" onSubmit={saveManualTransaction}>
+        <form className="wa-card p-4 sm:p-6 rounded-[1.5rem] space-y-6" onSubmit={saveManualTransaction}>
           <div className="bg-surface-container-highest rounded-full flex p-1.5 gap-1">
             <button
               type="button"
-              className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${type === "expense" ? "bg-tertiary/20 text-tertiary" : "text-on-surface-variant hover:text-on-surface"}`}
+              className={`flex-1 py-3 px-2 sm:px-4 rounded-full text-xs sm:text-sm font-bold transition-all ${type === "expense" ? "bg-tertiary/20 text-tertiary" : "text-on-surface-variant hover:text-on-surface"}`}
               onClick={() => setType("expense")}
             >
               Pengeluaran
             </button>
             <button
               type="button"
-              className={`flex-1 py-3 px-4 rounded-full text-sm font-bold transition-all ${type === "income" ? "bg-primary/20 text-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+              className={`flex-1 py-3 px-2 sm:px-4 rounded-full text-xs sm:text-sm font-bold transition-all ${type === "income" ? "bg-primary/20 text-primary" : "text-on-surface-variant hover:text-on-surface"}`}
               onClick={() => setType("income")}
             >
               Pemasukan
             </button>
+            <button
+              type="button"
+              className={`flex-1 py-3 px-2 sm:px-4 rounded-full text-xs sm:text-sm font-bold transition-all ${type === "transfer" ? "bg-on-surface-variant/20 text-on-surface" : "text-on-surface-variant hover:text-on-surface"}`}
+              onClick={() => setType("transfer")}
+            >
+              Transfer
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">
+                Template Cepat
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowTemplateComposer((currentValue) => !currentValue)}
+                className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+              >
+                {showTemplateComposer ? "Tutup" : "Simpan form ini"}
+              </button>
+            </div>
+
+            {visibleTemplates.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {visibleTemplates.map((template) => (
+                    <article
+                      key={template.id}
+                      className="min-w-[180px] rounded-2xl wa-field p-3 space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-on-surface line-clamp-1">{template.name}</p>
+                          <p className="text-[11px] text-on-surface-variant line-clamp-1">
+                            {template.type === "income" ? "Pemasukan" : "Pengeluaran"}
+                            {template.amount > 0 ? ` - ${formatRupiahInput(template.amount)}` : ""}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTemplate(template.id)}
+                          className="w-7 h-7 rounded-full bg-surface-container-low text-on-surface-variant hover:text-tertiary transition-colors shrink-0"
+                          aria-label={`Hapus template ${template.name}`}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">close</span>
+                        </button>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => applyTemplateToManualForm(template)}
+                        className="w-full rounded-xl bg-primary/10 text-primary text-xs font-semibold py-2 hover:bg-primary/15 transition-colors"
+                      >
+                        Pakai Template
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-on-surface-variant bg-surface-container-highest rounded-xl px-4 py-3">
+                Belum ada template cepat. Simpan form yang sering dipakai agar input harian lebih singkat.
+              </p>
+            )}
+
+            {showTemplateComposer ? (
+              <div className="wa-field rounded-2xl p-4 space-y-3">
+                <label className="block space-y-2">
+                  <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant">
+                    Nama Template
+                  </span>
+                  <input
+                    type="text"
+                    value={templateName}
+                    onChange={(event) => setTemplateName(event.target.value)}
+                    className="w-full bg-surface-container-low border border-outline-variant/15 rounded-xl px-4 py-3 text-on-surface outline-none focus:ring-2 focus:ring-primary/30 transition-all"
+                    placeholder="Contoh: Makan siang kantor"
+                  />
+                </label>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowTemplateComposer(false);
+                      setTemplateName("");
+                    }}
+                    className="flex-1 py-3 rounded-xl bg-surface-container-low text-on-surface text-sm font-semibold hover:bg-surface-bright transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveTemplate}
+                    className="flex-1 py-3 rounded-xl bg-primary text-on-primary text-sm font-semibold hover:brightness-110 transition-all"
+                  >
+                    Simpan Template
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           <label className="block space-y-2">
             <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Nominal Transaksi</span>
-            <div className={`flex items-center bg-surface-container-highest rounded-xl px-4 overflow-hidden border-2 transition-colors focus-within:bg-white focus-within:border-primary ${type === 'expense' ? 'focus-within:border-tertiary' : 'focus-within:border-primary'} border-transparent`}>
-              <strong className={`text-xl font-bold ${type === 'expense' ? 'text-tertiary' : 'text-primary'} focus-within:text-surface-container-low`}>Rp</strong>
+            <div className={`flex items-center wa-field rounded-xl px-4 overflow-hidden transition-colors ${type === 'expense' ? 'focus-within:border-tertiary/70' : type === 'transfer' ? 'focus-within:border-on-surface-variant/70' : 'focus-within:border-primary/70'}`}>
+              <strong className={`text-xl font-bold ${type === 'expense' ? 'text-tertiary' : type === 'transfer' ? 'text-on-surface-variant' : 'text-primary'} focus-within:text-surface-container-low`}>Rp</strong>
               <input
                 type="text"
                 inputMode="numeric"
                 value={formattedAmount}
                 onChange={(event) => handleAmountInput(event.target.value)}
                 placeholder="0"
-                className="w-full bg-transparent border-none py-4 px-3 text-3xl font-bold font-headline text-on-surface outline-none focus:text-surface-container-low"
+                className="w-full bg-transparent border-none py-4 px-3 text-3xl font-bold font-headline text-on-surface outline-none"
                 required
               />
             </div>
           </label>
 
-          <div className="space-y-2">
-            <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Pilih Kategori</span>
-            <div className="bg-surface-container-highest rounded-xl p-2">
-              <CategoryPicker value={manualCategory} onChange={setManualCategory} />
+          {type !== "transfer" && (
+            <div className="space-y-2">
+              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Pilih Kategori</span>
+              <div className="wa-field rounded-xl p-2">
+                <CategoryPicker value={manualCategory} onChange={setManualCategory} />
+              </div>
             </div>
-          </div>
+          )}
 
           <label className="block space-y-2">
-            <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Bayar / Masuk ke Rekening</span>
+            <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">
+              {type === "transfer" ? "Sumber Rekening" : "Bayar / Masuk ke Rekening"}
+            </span>
             <select
               value={manualAccountId}
               onChange={(event) => {
                 setManualAccountId(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all appearance-none font-bold"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all appearance-none font-bold"
               required
             >
               <option value="" disabled>Pilih rekening</option>
@@ -706,6 +972,26 @@ function AddTransactionPage() {
               ))}
             </select>
           </label>
+
+          {type === "transfer" && (
+            <label className="block space-y-2">
+              <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Rekening Tujuan</span>
+              <select
+                value={destinationAccountId}
+                onChange={(event) => {
+                  setDestinationAccountId(event.target.value);
+                  clearNotification();
+                }}
+                className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all appearance-none font-bold"
+                required
+              >
+                <option value="" disabled>Pilih rekening tujuan</option>
+                {accounts.map((account) => (
+                  <option key={account.id} value={account.id}>{account.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
 
           <label className="block space-y-2">
             <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Catatan</span>
@@ -716,7 +1002,7 @@ function AddTransactionPage() {
                 setDescription(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium placeholder:text-on-surface-variant/40"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all font-medium placeholder:text-on-surface-variant/40"
               placeholder="Contoh: Bakmi GM Grand Indonesia"
             />
           </label>
@@ -730,23 +1016,23 @@ function AddTransactionPage() {
                 setDate(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium placeholder:text-on-surface-variant/40 [color-scheme:dark]"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all font-medium placeholder:text-on-surface-variant/40 [color-scheme:dark]"
               style={{ colorScheme: 'dark' }}
               required
             />
           </label>
 
-          <button type="submit" className={`w-full text-white font-bold py-4 rounded-full mt-4 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 ${type === 'expense' ? 'bg-tertiary shadow-lg shadow-tertiary/20' : 'bg-primary text-on-primary shadow-lg shadow-primary/20'}`} disabled={saving}>
+          <button type="submit" className={`w-full font-bold py-4 rounded-full mt-4 flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 ${type === 'expense' ? 'bg-tertiary text-white shadow-lg shadow-tertiary/20' : 'wa-button-primary'}`} disabled={saving}>
             {saving ? "Menyimpan..." : "Simpan Transaksi"}
           </button>
         </form>
       ) : (
-        <form className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-6" onSubmit={saveScannedTransaction}>
+        <form className="wa-card p-4 sm:p-6 rounded-[1.5rem] space-y-6" onSubmit={saveScannedTransaction}>
           <div className="grid grid-cols-2 gap-4">
-            <button type="button" className="bg-surface-container-highest text-on-surface font-bold py-3 rounded-xl hover:bg-surface-bright transition-colors text-sm" onClick={() => cameraInputRef.current?.click()}>
+            <button type="button" className="wa-field text-on-surface font-bold py-3 rounded-xl hover:bg-surface-bright transition-colors text-sm" onClick={() => cameraInputRef.current?.click()}>
               <span className="material-symbols-outlined align-middle mr-2">photo_camera</span>Kamera
             </button>
-            <button type="button" className="bg-surface-container-highest text-on-surface font-bold py-3 rounded-xl hover:bg-surface-bright transition-colors text-sm" onClick={() => galleryInputRef.current?.click()}>
+            <button type="button" className="wa-field text-on-surface font-bold py-3 rounded-xl hover:bg-surface-bright transition-colors text-sm" onClick={() => galleryInputRef.current?.click()}>
               <span className="material-symbols-outlined align-middle mr-2">image</span>Galeri
             </button>
             <input
@@ -766,7 +1052,7 @@ function AddTransactionPage() {
             />
           </div>
 
-          <div className="bg-surface-container-highest rounded-xl p-4 text-center">
+          <div className="wa-field rounded-xl p-4 text-center">
             <p className="text-sm font-medium text-on-surface-variant mb-2">{scanStatus}</p>
             <div className="w-full bg-surface-container-lowest h-2 rounded-full overflow-hidden">
               <div className="bg-primary h-full transition-all duration-300" style={{ width: `${scanProgress}%` }} />
@@ -782,7 +1068,7 @@ function AddTransactionPage() {
 
           <label className="block space-y-2">
             <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Nominal Terdeteksi</span>
-            <div className="flex items-center bg-surface-container-highest rounded-xl px-4 overflow-hidden border-2 transition-colors focus-within:bg-white focus-within:border-tertiary border-transparent">
+            <div className="flex items-center wa-field rounded-xl px-4 overflow-hidden transition-colors focus-within:border-tertiary/70">
               <strong className="text-xl font-bold text-tertiary focus-within:text-surface-container-low">Rp</strong>
               <input
                 type="text"
@@ -790,7 +1076,7 @@ function AddTransactionPage() {
                 value={formattedScanAmount}
                 onChange={(event) => handleScanAmountInput(event.target.value)}
                 placeholder="0"
-                className="w-full bg-transparent border-none py-4 px-3 text-3xl font-bold font-headline text-on-surface outline-none focus:text-surface-container-low"
+                className="w-full bg-transparent border-none py-4 px-3 text-3xl font-bold font-headline text-on-surface outline-none"
                 required
               />
             </div>
@@ -805,7 +1091,7 @@ function AddTransactionPage() {
                 setScanDescription(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium placeholder:text-on-surface-variant/40"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all font-medium placeholder:text-on-surface-variant/40"
               placeholder="Contoh: Indomaret Point"
               required
             />
@@ -813,7 +1099,7 @@ function AddTransactionPage() {
 
           <div className="space-y-2">
             <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Kategori</span>
-            <div className="bg-surface-container-highest rounded-xl p-2">
+            <div className="wa-field rounded-xl p-2">
               <CategoryPicker value={scanCategory} onChange={setScanCategory} />
             </div>
           </div>
@@ -826,7 +1112,7 @@ function AddTransactionPage() {
                 setScanAccountId(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all appearance-none font-bold"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all appearance-none font-bold"
               required
             >
               <option value="" disabled>Pilih rekening</option>
@@ -838,7 +1124,7 @@ function AddTransactionPage() {
 
           <div className="space-y-2">
             <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant ml-1">Rincian Belanja</span>
-            <div className="bg-surface-container-highest rounded-xl p-4 space-y-4">
+            <div className="wa-field rounded-xl p-4 space-y-4">
               {scanLineItems.length === 0 ? (
                 <p className="text-sm text-on-surface-variant text-center my-2">Belum ada rincian item terdeteksi.</p>
               ) : (
@@ -900,13 +1186,13 @@ function AddTransactionPage() {
                 setDate(event.target.value);
                 clearNotification();
               }}
-              className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-4 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all font-medium placeholder:text-on-surface-variant/40 [color-scheme:dark]"
+              className="w-full wa-field rounded-xl px-4 py-4 text-on-surface outline-none transition-all font-medium placeholder:text-on-surface-variant/40 [color-scheme:dark]"
               style={{ colorScheme: 'dark' }}
               required
             />
           </label>
 
-          <button type="submit" className="w-full bg-primary text-on-primary font-bold py-4 rounded-full mt-4 transition-all active:scale-[0.98] disabled:opacity-50 shadow-lg shadow-primary/20" disabled={saving || scanning}>
+          <button type="submit" className="w-full wa-button-primary font-bold py-4 rounded-full mt-4 transition-all active:scale-[0.98] disabled:opacity-50" disabled={saving || scanning}>
             {saving ? "Menyimpan..." : "Konfirmasi & Simpan"}
           </button>
         </form>

@@ -22,6 +22,7 @@ function BooksPage() {
   const [editingType, setEditingType] = useState("");
   const [editingIncome, setEditingIncome] = useState(0);
   const [editingExpense, setEditingExpense] = useState(0);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const { showToast } = useToast();
 
@@ -108,7 +109,7 @@ function BooksPage() {
     }
   };
 
-  const handleDelete = async (accountId) => {
+  const confirmDeleteAccount = async (accountId) => {
     setSubmitting(true);
     try {
       await removeAccount(accountId);
@@ -120,6 +121,7 @@ function BooksPage() {
       });
     } finally {
       setSubmitting(false);
+      setConfirmDeleteId(null);
     }
   };
 
@@ -135,7 +137,7 @@ function BooksPage() {
           <span className="text-[10px] font-medium tracking-widest uppercase text-on-surface-variant">Ringkasan Buku / Rekening</span>
         </div>
         
-        <div className="glass-effect p-8 rounded-[1.5rem] border border-primary/10 shadow-lg relative overflow-hidden">
+        <div className="glass-effect p-6 sm:p-8 rounded-[1.5rem] relative overflow-hidden">
           <div className="relative z-10">
             <div className="flex items-baseline gap-2 mb-2">
               <span className="text-on-surface-variant text-xl font-medium">Rp</span>
@@ -162,7 +164,7 @@ function BooksPage() {
       </section>
 
       {/* Form Section: Tambah Rekening Baru */}
-      <section className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-6">
+      <section className="wa-card p-4 sm:p-6 rounded-[1.5rem] space-y-6">
         <h2 className="text-lg font-bold tracking-tight text-on-surface">Tambah Rekening Baru</h2>
         <form onSubmit={createAccount} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -172,7 +174,7 @@ function BooksPage() {
                 type="text"
                 value={nameInput}
                 onChange={(event) => setNameInput(event.target.value)}
-                className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all placeholder:text-on-surface-variant/40" 
+                className="w-full wa-field rounded-xl px-4 py-3 text-on-surface outline-none transition-all placeholder:text-on-surface-variant/40"
                 placeholder="Contoh: Tabungan Haji" 
                 required
               />
@@ -182,7 +184,7 @@ function BooksPage() {
               <select 
                 value={typeInput}
                 onChange={(event) => setTypeInput(event.target.value)}
-                className="w-full bg-surface-container-highest border-none rounded-xl px-4 py-3 text-on-surface focus:ring-2 focus:ring-primary/40 transition-all appearance-none"
+                className="w-full wa-field rounded-xl px-4 py-3 text-on-surface outline-none transition-all appearance-none"
               >
                 {accountTypeOptions.map((option) => (
                   <option key={option.id} value={option.id}>
@@ -196,7 +198,7 @@ function BooksPage() {
           <button 
             type="submit" 
             disabled={submitting}
-            className="w-full bg-primary text-on-primary font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all shadow-xl shadow-primary/10 disabled:opacity-50"
+            className="w-full wa-button-primary font-bold py-4 rounded-full flex items-center justify-center gap-2 active:scale-[0.98] transition-all disabled:opacity-50"
           >
             <span className="material-symbols-outlined">add</span>
             {submitting ? "Menyimpan..." : "Tambah Rekening"}
@@ -218,13 +220,17 @@ function BooksPage() {
             const balance = account.incomeTotal - account.expenseTotal;
             const icon = account.type === 'cash' ? 'payments' : account.type === 'ewallet' ? 'account_balance_wallet' : 'account_balance';
             
-            // Generate some coloring variation based on index as per design (primary, secondary, tertiary)
-            const colorClass = index % 3 === 0 ? 'primary' : index % 3 === 1 ? 'secondary' : 'tertiary';
+            const iconTone =
+              index % 3 === 0
+                ? "bg-primary/10 text-primary"
+                : index % 3 === 1
+                  ? "bg-secondary/10 text-secondary"
+                  : "bg-tertiary/10 text-tertiary";
             
             return (
-              <div key={account.id} className="bg-surface-container-high p-5 rounded-[1.5rem] flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-surface-bright transition-colors group">
+              <div key={account.id} className="wa-card-soft p-5 rounded-[1.5rem] flex flex-col md:flex-row md:items-center justify-between gap-6 hover:bg-surface-bright transition-colors group">
                 <div className="flex items-center gap-4">
-                  <div className={`w-12 h-12 bg-${colorClass}/10 rounded-2xl flex items-center justify-center text-${colorClass} group-hover:scale-110 transition-transform`}>
+                  <div className={`w-12 h-12 ${iconTone} rounded-2xl flex items-center justify-center group-hover:scale-105 transition-transform`}>
                     <span className="material-symbols-outlined" style={{fontVariationSettings: "'FILL' 1"}}>{icon}</span>
                   </div>
                   
@@ -234,14 +240,14 @@ function BooksPage() {
                         type="text"
                         value={editingName}
                         onChange={(event) => setEditingName(event.target.value)}
-                        className="bg-surface-container-highest border-none rounded-lg px-3 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full sm:w-auto mb-2 block"
+                        className="wa-field rounded-lg px-3 py-1 text-on-surface outline-none w-full sm:w-auto mb-2 block"
                         placeholder="Nama rekening"
                         autoFocus
                       />
                       <select
                         value={editingType}
                         onChange={(event) => setEditingType(event.target.value)}
-                        className="bg-surface-container-highest border-none rounded-lg px-2 py-1 text-on-surface focus:ring-1 focus:ring-primary w-full text-[10px] tracking-widest uppercase font-medium outline-none"
+                        className="wa-field rounded-lg px-2 py-1 text-on-surface w-full text-[10px] tracking-widest uppercase font-medium outline-none"
                       >
                        {accountTypeOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                       </select>
@@ -260,7 +266,7 @@ function BooksPage() {
                   {editingAccountId === account.id ? (
                     <div>
                       <span className="text-[10px] font-medium text-primary/60 block mb-0.5">BALANCE</span>
-                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                      <div className="flex items-center wa-field rounded-lg px-2 py-1">
                         <span className="text-xs font-bold text-primary">Rp</span>
                         <input
                           type="text"
@@ -279,9 +285,9 @@ function BooksPage() {
                   )}
                   
                   {editingAccountId === account.id ? (
-                    <div>
+                    <div className="hidden sm:block">
                       <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
-                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                      <div className="flex items-center wa-field rounded-lg px-2 py-1">
                         <span className="text-xs font-bold text-primary">+</span>
                         <input
                           type="text"
@@ -293,16 +299,16 @@ function BooksPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="hidden sm:block">
+                    <div>
                       <span className="text-[10px] font-medium text-primary/60 block mb-0.5">INCOME</span>
                       <span className="font-bold text-primary text-sm">+ {formatRupiah(account.incomeTotal)}</span>
                     </div>
                   )}
 
                   {editingAccountId === account.id ? (
-                    <div>
+                    <div className="hidden sm:block">
                       <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
-                      <div className="flex items-center bg-surface-container-highest rounded-lg px-2 py-1">
+                      <div className="flex items-center wa-field rounded-lg px-2 py-1">
                         <span className="text-xs font-bold text-tertiary">-</span>
                         <input
                           type="text"
@@ -314,7 +320,7 @@ function BooksPage() {
                       </div>
                     </div>
                   ) : (
-                    <div className="hidden sm:block">
+                    <div>
                       <span className="text-[10px] font-medium text-tertiary/60 block mb-0.5">EXPENSE</span>
                       <span className="font-bold text-tertiary text-sm">- {formatRupiah(account.expenseTotal)}</span>
                     </div>
@@ -326,19 +332,29 @@ function BooksPage() {
                          <button onClick={saveRename} disabled={submitting} className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors">
                           <span className="material-symbols-outlined text-[20px]">check</span>
                         </button>
-                        <button onClick={() => { setEditingAccountId(""); setEditingName(""); }} className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
+                        <button onClick={() => { setEditingAccountId(""); setEditingName(""); }} className="w-10 h-10 rounded-full wa-field flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
                           <span className="material-symbols-outlined text-[20px]">close</span>
                         </button>
                       </>
+                    ) : confirmDeleteId === account.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-error mr-2">Yakin?</span>
+                        <button onClick={() => confirmDeleteAccount(account.id)} disabled={submitting} className="px-3 h-10 rounded-full bg-error text-on-error flex items-center justify-center text-xs font-bold hover:bg-error/80 transition-colors">
+                          Hapus
+                        </button>
+                        <button onClick={() => setConfirmDeleteId(null)} disabled={submitting} className="px-3 h-10 rounded-full wa-field text-on-surface flex items-center justify-center text-xs font-bold hover:bg-surface-bright transition-colors">
+                          Batal
+                        </button>
+                      </div>
                     ) : (
                       <>
-                        <button onClick={() => navigate(`/buku/${account.id}`)} className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
+                        <button onClick={() => navigate(`/buku/${account.id}`)} className="w-10 h-10 rounded-full wa-field flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
                           <span className="material-symbols-outlined text-[20px]">description</span>
                         </button>
-                        <button onClick={() => startEditing(account)} className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
+                        <button onClick={() => startEditing(account)} className="w-10 h-10 rounded-full wa-field flex items-center justify-center text-secondary hover:text-on-surface transition-colors">
                           <span className="material-symbols-outlined text-[20px]">edit</span>
                         </button>
-                        <button onClick={() => handleDelete(account.id)} disabled={submitting} className="w-10 h-10 rounded-full bg-surface-container-highest flex items-center justify-center text-tertiary/60 hover:bg-tertiary/10 hover:text-tertiary transition-all">
+                        <button onClick={() => setConfirmDeleteId(account.id)} disabled={submitting} className="w-10 h-10 rounded-full wa-field flex items-center justify-center text-tertiary/60 hover:bg-tertiary/10 hover:text-tertiary transition-all">
                           <span className="material-symbols-outlined text-[20px]">delete</span>
                         </button>
                       </>
@@ -350,7 +366,7 @@ function BooksPage() {
           })}
           
           {sortedAccounts.length === 0 ? (
-            <p className="text-center text-sm text-on-surface-variant bg-surface-container-low p-6 rounded-2xl">
+            <p className="text-center text-sm text-on-surface-variant wa-card p-6 rounded-2xl">
               Belum ada rekening. Tambahkan rekening pertamamu dari form di atas.
             </p>
           ) : null}

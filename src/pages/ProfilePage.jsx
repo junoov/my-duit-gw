@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import CustomCategoryManager from "../components/CustomCategoryManager";
 
 function ProfilePage() {
   const { user, signOutUser, signInWithGoogle, authError } = useAuth();
@@ -21,11 +22,9 @@ function ProfilePage() {
 
   return (
     <div className="space-y-6">
-      <section className="bg-surface-container-low p-6 rounded-[1.5rem] relative overflow-hidden flex flex-col items-center justify-center">
-        {/* Decorative background */}
+      <section className="wa-card p-6 rounded-[1.5rem] relative overflow-hidden flex flex-col items-center justify-center">
         <div className="absolute -top-24 -right-24 w-64 h-64 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
         <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-tertiary/10 rounded-full blur-3xl pointer-events-none"></div>
-        
         <div className="relative z-10 text-center space-y-4">
           <div className="w-24 h-24 mx-auto rounded-full p-1 bg-gradient-to-tr from-primary to-secondary">
             <img 
@@ -49,11 +48,11 @@ function ProfilePage() {
         </div>
       </section>
 
-      <section className="bg-surface-container-low p-6 rounded-[1.5rem] space-y-6">
+      <section className="wa-card p-4 sm:p-6 rounded-[1.5rem] space-y-6">
         <h3 className="text-lg font-bold tracking-tight text-on-surface">Pengaturan Akun</h3>
         <div className="space-y-3 mt-4">
           {user ? (
-            <button className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest text-on-surface-variant font-medium cursor-not-allowed" disabled>
+            <button className="w-full flex items-center justify-between p-4 rounded-xl wa-field text-on-surface-variant font-medium cursor-not-allowed" disabled>
               <span className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-primary">key</span>
                 Login via Google
@@ -62,7 +61,7 @@ function ProfilePage() {
             </button>
           ) : (
             <button
-              className="w-full flex items-center justify-between p-4 rounded-xl bg-primary text-on-primary font-bold"
+              className="w-full flex items-center justify-between p-4 rounded-xl wa-button-primary font-bold"
               onClick={async () => {
                 setLoading(true);
                 try {
@@ -87,7 +86,7 @@ function ProfilePage() {
 
           {user ? (
             <button
-              className="w-full flex items-center justify-between p-4 rounded-xl bg-surface-container-highest hover:bg-tertiary/10 transition-colors text-tertiary font-bold disabled:opacity-50"
+              className="w-full flex items-center justify-between p-4 rounded-xl wa-field hover:bg-tertiary/10 transition-colors text-tertiary font-bold disabled:opacity-50"
               disabled={loading}
               onClick={async () => {
                 setLoading(true);
@@ -114,6 +113,8 @@ function ProfilePage() {
           {!user && authError ? (
             <p className="text-sm bg-tertiary/10 text-tertiary rounded-xl p-3">{authError}</p>
           ) : null}
+
+          {user && <CustomCategoryManager />}
         </div>
       </section>
       
